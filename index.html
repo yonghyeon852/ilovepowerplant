@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>I love power plant</title>
+  <link rel="stylesheet" href="style.css?v=20260908204906">
+</head>
+<body>
+
+  <!-- ===== 상단 바 ===== -->
+  <header id="topbar">
+    <div class="left-stats">
+      <div class="stat player" title="대통령"><span id="player-label">👤</span></div>
+      <div class="stat money" title="보유 자금">
+        <span class="won">₩</span>
+        <span id="money-value">0</span><span class="unit">억</span>
+      </div>
+      <div class="stat happy" title="국민 행복도 (15 아래로 떨어지면 탄핵)">
+        <span id="happy-face">🙂</span>
+        <span id="happy-value">70</span><span class="unit">/100</span>
+      </div>
+      <div class="stat pop" title="총인구 (만 명). 경제 규모 점수에 반영되고, 행복도가 높을수록 빨리 늘어납니다">
+        <span>👥</span>
+        <span id="pop-value">0</span><span class="unit">만</span>
+      </div>
+      <div class="stat score" id="score-stat" title="국정 운영 점수 (1,000점 만점, 지금까지 기준). 국민 행복·전력 시스템·탄소·경제 규모·자본 각 200점">
+        <span>🏆</span>
+        <span id="score-value">0</span><span class="unit">점</span>
+      </div>
+      <div class="stat rd" title="R&D 수준 (테크 성공 확률 보너스)">
+        <span>🔬</span>
+        <span id="rd-value">0</span>
+      </div>
+    </div>
+
+    <nav id="tabs">
+      <button class="tab active" data-tab="map">🗺 지도 <small>1</small></button>
+      <button class="tab" data-tab="tech">🧪 테크트리 <small>2</small></button>
+      <button class="tab" data-tab="rd">🔬 R&amp;D <small>3</small></button>
+    </nav>
+
+    <div class="date-box">
+      <span id="date-value">2030년 1월</span>
+      <button id="next-month" class="primary" title="단축키: Space / Enter">이번 달 진행 ▶ <small>Space</small></button>
+      <button id="copy-summary" class="ghost" title="지금 게임 상태를 짧은 글로 복사합니다 (질문할 때 붙여 넣기)">📋 요약</button>
+      <button id="tutorial-help" class="ghost" title="비서의 안내를 처음부터 다시 봅니다">❓</button>
+      <button id="resign" class="ghost" title="지금 사퇴하고 엔딩 화면으로 갑니다">🏳 사퇴</button>
+      <button id="new-game" class="ghost" title="새 게임">새 게임</button>
+    </div>
+  </header>
+
+  <!-- ===== 지도 탭 ===== -->
+  <main id="tab-map" class="tab-page">
+    <aside id="palette">
+      <div class="subtabs">
+        <button class="subtab active" data-subtab="plants">발전 설비</button>
+        <button class="subtab" data-subtab="infra">저장·수소·연계</button>
+        <button class="subtab" data-subtab="city">도시</button>
+      </div>
+
+      <div id="subtab-plants">
+        <div id="palette-cards"></div>
+        <p class="tip">카드를 지도 위로 끌어다 놓으면 건설이 시작됩니다. 설비를 클릭하면 정보가 보입니다.<br>
+          단축키: <b>Space</b> 달 진행 · <b>Esc</b> 선택 해제 · <b>지도 드래그</b> 화면 이동 · <b>마우스 휠</b> 확대·축소 · <b>방향키/WASD</b> 이동</p>
+      </div>
+
+      <div id="subtab-city" class="hidden">
+        <div id="city-list"></div>
+        <div id="city-found">
+          <h3>새 도시 만들기</h3>
+          <p class="tip">도시가 붐비면 새 도시를 세워 인구를 나눕니다. "자동으로 자리 잡기"를 누르면 <b id="city-need">40</b>칸을 알아서 칠해 주고, 직접 칠할 수도 있습니다. 칸은 서로 이어져야 하고 강·바다·설비·다른 도시와 겹칠 수 없습니다.</p>
+          <label class="field"><span>도시 이름</span><input id="city-name" type="text" maxlength="10" placeholder="예: 새빛시"></label>
+          <div class="row"><span>칠한 칸</span><b><span id="city-count">0</span> / <span id="city-need2">40</span></b></div>
+          <div class="row"><span>조성 비용</span><b id="city-cost">1,000억</b></div>
+          <div class="actions">
+            <button id="city-auto" class="primary small">자동으로 자리 잡기</button>
+            <button id="city-start" class="small">직접 칠하기</button>
+            <button id="city-confirm" class="primary small hidden">조성 확정</button>
+            <button id="city-cancel" class="small hidden">취소</button>
+          </div>
+          <p id="city-status" class="tip"></p>
+        </div>
+      </div>
+    </aside>
+
+    <section id="board">
+      <div id="map-wrap">
+      <div class="stat top-left" id="weather-chip">—</div>
+      <div class="stat top-right" title="이번 달 예상 최대 수요 (가장 수요가 큰 시각 기준)">
+        <svg class="bolt" viewBox="0 0 24 24" fill="#ffd600"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
+        <small>이번 달 최대 수요</small> <span id="demand-value">0</span> MW
+      </div>
+
+      <canvas id="map"></canvas>
+
+      <div class="stat bottom-left" id="co2-chip">—</div>
+      <div class="stat-row bottom-right">
+        <div class="stat" id="renew-chip" title="가동 중인 태양광·풍력: 명목 용량과 이번 달 날씨 기준 예상 출력">
+          <svg class="bolt" viewBox="0 0 24 24" fill="#66bb6a"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
+          <span class="stat-lines"><small>재생에너지 예상 출력</small><span id="renew-value">없음</span></span>
+        </div>
+        <div class="stat" title="가동 중인 조절 전원(가스·석탄·원전·SMR)의 명목 용량 합">
+          <svg class="bolt" viewBox="0 0 24 24" fill="#42a5f5"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
+          <span class="stat-lines"><small>조절 전원 설비 (명목)</small><span id="supply-value">0</span></span>
+        </div>
+      </div>
+      </div>
+      <div id="board-bottom">
+        <div id="bottom-left">
+          <section class="panel mini-panel" id="policy-panel"><h2>🏛 정책</h2><div id="policy-info"></div></section>
+          <section class="panel mini-panel" id="quest-panel"><h2>🎯 목표</h2><div id="quest-list"></div></section>
+        </div>
+        <div id="bottom-mid">
+          <canvas id="minimap" title="미니맵: 클릭하거나 끌어서 이동"></canvas>
+          <section class="panel mini-panel" id="city-stats"><div id="city-stats-info"></div></section>
+        </div>
+        <section class="panel mini-panel" id="techrd-panel" title="클릭하면 테크트리 탭"><h2>🧪 테크 · 🔬 R&amp;D</h2><div id="techrd-info"></div></section>
+        <section class="panel mini-panel" id="news-panel"><h2>📰 최근 소식</h2><div id="news-info"></div></section>
+      </div>
+
+      <div id="message"></div>
+      <div id="tooltip"></div>
+    </section>
+
+    <aside id="side">
+      <section class="panel">
+        <h2>이번 달 전망</h2>
+        <div id="forecast-info"></div>
+        <div id="forecast-graph">
+        <canvas id="forecast-chart" width="600" height="230"></canvas>
+        <div class="legend-row legend-big">
+          <span class="legend-group">공급 (아래부터 쌓임)</span>
+          <span><i style="background:#78909c"></i>조절 전원 + 수입</span>
+          <span><i style="background:#ffee58"></i>태양광</span>
+          <span><i style="background:#4fc3f7"></i>풍력</span>
+        </div>
+        <div class="legend-row legend-big">
+          <span class="legend-group">수요</span>
+          <span><i style="background:#ffffff"></i>예상 수요 (흰 선)</span>
+          <span><i style="background:#ef5350"></i>부족 = 정전 (수요가 공급 위)</span>
+        </div>
+        <div id="forecast-diag"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="selected-panel">
+        <h2>선택한 설비</h2>
+        <div id="selected-info"><p class="muted">지도에서 설비를 클릭하세요.</p></div>
+      </section>
+
+
+      <section class="panel">
+        <h2>설비 현황</h2>
+        <canvas id="fleet-pie" width="620" height="210"></canvas>
+        <div id="fleet-info"></div>
+      </section>
+    </aside>
+  </main>
+
+  <!-- ===== 테크트리 탭 ===== -->
+  <main id="tab-tech" class="tab-page hidden">
+    <div class="page">
+      <div class="page-head">
+        <h2>테크트리</h2>
+        <p class="muted">돈을 내고 연구를 시작하면 3개월 뒤 결과가 나옵니다. 성공 확률 = 기본 확률(30 / 10 / 5 / 3%) + R&amp;D 보너스(<b id="tech-bonus">0%</b>) + 실패 누적(+8%/회). 실패해도 비용은 돌아오지 않습니다. 연구 시작에는 R&amp;D 수준 20, 2단계는 150, 3단계는 300, 4단계는 400이 필요하고(수소 트리는 80 / 200), 동시에 진행할 수 있는 연구는 R&amp;D 수준 100마다 1개씩 늘어납니다. 업계 표준 효율은 매년 1.5%씩 좋아져 연구하지 않은 설비는 해마다 마진이 얇아집니다.</p>
+      </div>
+      <div id="tech-grid"></div>
+      <section class="panel">
+        <h2>연구 기록</h2>
+        <div id="tech-log"></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ===== R&D 탭 ===== -->
+  <main id="tab-rd" class="tab-page hidden">
+    <div class="page">
+      <div class="page-head">
+        <h2>R&amp;D</h2>
+        <p class="muted">연구원을 영입하고 강화해 R&amp;D 수준을 올리세요. 영입과 강화는 한 달에 한 번씩만 할 수 있습니다. 학부생·석사는 매달 조금씩 퇴사하고, 박사·초임·중견 연구원은 연구가 실패하면 30% 확률로 한 명이 책임지고 퇴사하며, 박사 이상은 30년 재직 후 은퇴합니다(대가는 퇴사하지 않습니다). 수준이 높을수록 테크 성공 확률과 동시 연구 수가 오르고, 2·3단계 연구가 열리며, 건설비·공사 기간·유지비가 줄고 특허 수입이 들어옵니다. 인건비는 매달 나갑니다.</p>
+      </div>
+      <div id="rd-summary" class="summary-row"></div>
+      <h3 style="margin:6px 0 0">R&amp;D 수준에 따른 상시 이점 <small class="muted">(테크를 다 올려도 계속 적용)</small></h3>
+      <div id="rd-perks" class="summary-row"></div>
+      <div id="rd-table"></div>
+      <section class="panel" style="margin-top:12px"><h2>연구원 변동 기록</h2><div id="rd-log"></div></section>
+    </div>
+  </main>
+
+  <footer>
+    <span class="legend-group">지형</span>
+    <span class="legend"><i style="background:#7cb342"></i>땅</span>
+    <span class="legend"><i style="background:#4fc3f7"></i>강</span>
+    <span class="legend"><i style="background:#1565c0"></i>바다</span>
+    <span class="legend"><i style="background:#2e7d32"></i>산 (태양광·풍력만)</span>
+    <span class="legend"><i style="background:#9e9e9e"></i>도시</span>
+    <span class="legend-group">설비 색은 왼쪽 카드와 같습니다 · 빗금은 건설 중 · 붉은 글씨는 수명 종료 · 노란 점은 노후</span>
+  </footer>
+
+  <!-- ===== 월간 결산 ===== -->
+  <div id="report" class="overlay hidden">
+    <div class="modal wide">
+      <h2 id="report-title">결산</h2>
+      <div id="report-events"></div>
+      <canvas id="report-chart" width="900" height="340"></canvas>
+      <div class="legend-row">
+        <span><i style="background:#f06292"></i>원전</span>
+        <span><i style="background:#546e7a"></i>석탄</span>
+        <span><i style="background:#e53935"></i>복합</span>
+        <span><i style="background:#ff9100"></i>가스터빈</span>
+        <span><i style="background:#ffee58"></i>태양광</span>
+        <span><i style="background:#81d4fa"></i>풍력</span>
+        <span><i style="background:#26c6da"></i>ESS 방전</span>
+        <span><i style="background:#ab47bc"></i>수입</span>
+        <span><i style="background:#ffffff"></i>수요 (흰 선)</span>
+        <span><i style="background:#b39ddb"></i>SMP (점선, 오른쪽 축)</span>
+      </div>
+      <div id="report-body"></div>
+      <div class="modal-actions">
+        <button id="report-close" class="primary" title="단축키: Space / Enter">다음 달로 ▶ <small>Space</small></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 시작 화면 ===== -->
+  <div id="start" class="overlay">
+    <div class="modal">
+      <h1 class="big">I love power plant</h1>
+      <p class="sub">대통령이 되어 나라의 전력망을 설계하고, 전기를 팔고, 국가를 키우세요.</p>
+      <label class="name-field">
+        <span>대통령 이름</span>
+        <input id="player-name" type="text" maxlength="12" placeholder="이름을 입력하세요" autocomplete="off">
+      </label>
+      <div class="mode-list">
+        <button class="mode" data-mode="normal">
+          <strong>일반 모드 (20년 임기)</strong>
+          <span>오늘부터 20년(240턴) 동안 나라의 전력망을 운영합니다. 중간중간 닥치는 사건에 답하고 목표를 달성하세요. 임기가 끝나거나 탄핵·국가 부도로 물러나면 진행 기록과 국정 운영 점수(행복 · 전력 시스템 · 탄소 · 경제 규모 · 자본)가 나오고 랭킹에 등록할 수 있습니다.</span>
+        </button>
+        <button class="mode" data-mode="tutorial">
+          <strong>👩‍💼 튜토리얼</strong>
+          <span>처음이라면 여기서 시작하세요. 비서가 지도·설비·전망·결산·목표·테크트리·R&amp;D·도시·탄소·행복도·돈의 원리를 20단계로 안내합니다. 안내가 끝나면 그대로 일반 모드 20년 임기가 이어집니다.</span>
+        </button>
+        <button class="mode" data-mode="netzero">
+          <strong>탄소중립 도전</strong>
+          <span>20년 안에 첫해 대비 발전량당 탄소 배출(원단위, t/MWh)을 80% 이상 줄인 상태를 12개월 연속 유지하세요. 수요가 늘어도 원단위 기준이라 공정합니다. 정전이 나면 처음부터입니다.</span>
+        </button>
+      </div>
+      <div class="start-links">
+        <button id="continue-game" class="ghost hidden">이어하기</button>
+        <button id="show-rankings" class="ghost">🏆 랭킹</button>
+      </div>
+      <p class="how">
+        <b>기본 규칙</b><br>
+        · 설비를 지어 도시에 전기를 팝니다. 가장 비싼 발전기의 연료비가 그 시간의 전기값(SMP)이 됩니다.<br>
+        · 수요를 못 채우면 정전 비용을, 탄소를 배출하면 탄소세를 냅니다. 설비는 수명이 다하면 멈추므로 철거하고 새로 지어야 합니다.<br>
+        · 인구가 늘어 도시가 과밀해지면 국민이 불만을 갖습니다. "도시" 탭에서 새 도시를 세워 인구를 나누세요.<br>
+        · 테크트리와 R&amp;D로 설비를 개량하세요. 연구는 확률로 성공합니다.
+      </p>
+    </div>
+  </div>
+
+  <!-- ===== 게임 종료 ===== -->
+  <div id="gameover" class="overlay hidden">
+    <div class="modal wide">
+      <h2 id="gameover-title">게임 종료</h2>
+      <p id="gameover-text"></p>
+      <div id="ending-stats" class="ending-stats"></div>
+      <div id="ending-analysis" class="ending-analysis"></div>
+      <h3 style="margin:10px 0 0; font-size:0.95rem">집권 기간 동안의 흐름</h3>
+      <div class="traj-legend"><span><i style="background:#ffd600"></i>보유 자금 (억)</span><span><i style="background:#66bb6a"></i>국민 행복도 (오른쪽 축)</span></div>
+      <canvas id="traj-1" class="traj" width="920" height="200"></canvas>
+      <div class="traj-legend"><span><i style="background:#ef5350"></i>월 탄소 배출 (천 t)</span><span><i style="background:#81d4fa"></i>재생에너지 비중 % (오른쪽 축)</span><span><i style="background:#f06292"></i>원자력 비중 % (오른쪽 축)</span></div>
+      <canvas id="traj-2" class="traj" width="920" height="200"></canvas>
+      <div class="traj-legend"><span><i style="background:#ce93d8"></i>전기값 SMP (원/kWh)</span><span><i style="background:#ef9a9a"></i>탄소 원단위 (t/MWh, 오른쪽 축)</span><span><i style="background:rgba(255,255,255,0.7)"></i>배출 기준 (오른쪽 축, 6년차부터)</span></div>
+      <canvas id="traj-3" class="traj" width="920" height="200"></canvas>
+      <h3 style="margin:12px 0 4px; font-size:0.95rem">주요 이벤트 <span class="ev-filter"><button class="small on" data-evf="major">주요만</button><button class="small" data-evf="all">전체</button></span></h3>
+      <div id="ending-events" class="ending-events"></div>
+      <div class="rank-register">
+        <span>🏆 랭킹에 등록</span>
+        <input id="rank-name" type="text" maxlength="12" placeholder="이름">
+        <button id="rank-register" class="primary small">등록</button>
+        <span id="rank-status" class="muted"></span>
+      </div>
+      <div class="rank-head"><h3>랭킹</h3><button class="small" data-rank-clear>전체 삭제</button></div>
+      <div id="ending-rank-list" class="rank-wrap"></div>
+      <div class="modal-actions">
+        <button id="gameover-restart" class="primary">처음으로</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 사건 (선택) ===== -->
+  <div id="decision" class="overlay hidden">
+    <div class="modal decision-modal">
+      <h2><span id="decision-icon"></span><span id="decision-name"></span></h2>
+      <p id="decision-desc" class="desc"></p>
+      <div id="decision-choices" class="choice-list"></div>
+      <div id="decision-result" class="decision-result hidden"></div>
+      <div class="modal-actions"><button id="decision-close" class="primary hidden">확인</button></div>
+    </div>
+  </div>
+
+  <!-- ===== 랭킹 보기 ===== -->
+  <div id="rankings" class="overlay hidden">
+    <div class="modal wide">
+      <div class="rank-head"><h2 style="margin:0">🏆 랭킹</h2><button class="small" data-rank-clear>전체 삭제</button></div>
+      <p class="muted" style="font-size:0.8rem">종합 점수(국정 운영 점수 1,000점 만점 = 국민 행복 · 전력 시스템 · 탄소 · 경제 규모 · 자본 각 200점, 임기를 못 채우면 채운 비율만큼 감점), 자본, 행복도, 재임 기간(무한 모드) 랭킹이 있습니다. 기록은 이 브라우저에만 저장됩니다.</p>
+      <div id="rankings-list" class="rank-wrap"></div>
+      <div class="modal-actions">
+        <button id="rankings-close" class="primary">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="map.js?v=20260908204906"></script>
+  <script src="plants.js?v=20260908204906"></script>
+  <script src="tech.js?v=20260908204906"></script>
+  <script src="events.js?v=20260908204906"></script>
+  <script src="events2.js?v=20260908204906"></script>
+  <script src="tutorial.js?v=20260908204906"></script>
+  <script src="sim.js?v=20260908204906"></script>
+  <script src="ui.js?v=20260908204906"></script>
+  <script src="main.js?v=20260908204906"></script>
+</body>
+</html>
