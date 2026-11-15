@@ -302,7 +302,8 @@ function plantSpecRows(state, type) {
   if (p.oppositionRange) rows.push(['주민 반발', '도시 ' + m.nuclearOppRange + '칸 이내면 건설비 +' + fmt((m.nuclearOppMult - 1) * 100) + '% · 가까우면 행복도 감소']);
   else if (p.nuisance || type === 'wind' || type === 'coal') rows.push(['주민 반발', '도시 가까이 두면 행복도 감소']);
   if (p.requiresTech) rows.push(['필요 테크', TECH[p.requiresTech.tree].tiers[p.requiresTech.level - 1].name + (plantUnlocked(state, type) ? ' ✓' : ' (미개발)')]);
-  if (p.upgradeTo) rows.push(['개조', PLANTS[p.upgradeTo].name + '으로 ' + fmt(p.upgradeCost) + '억 · ' + p.upgradeMonths + '개월']);
+  if (p.upgradeTo) rows.push(['개조', PLANTS[p.upgradeTo].name + '으로 ' + fmt(upgradeCostOf(state, type)) + '억 · ' + p.upgradeMonths + '개월']);
+  if (costIndex(state) > 1.005) rows.push(['건설 물가', '×' + fmt(costIndex(state), 2) + ' (경제가 커져 건설비·유지비가 오른 상태 · 위 금액에 이미 반영)']);
   return rows;
 }
 function showPlantDetail(type, anchorEl) {
@@ -359,6 +360,16 @@ function renderTopbar(state) {
   const moneyEl = document.getElementById('money-value');
   moneyEl.textContent = fmt(Math.round(state.money));
   moneyEl.closest('.money').classList.toggle('negative', state.money < 0);
+  // 지난달 손익: 돈이 매달 얼마나 늘고 주는지 한눈에
+  const deltaEl = document.getElementById('money-delta');
+  if (deltaEl) {
+    const lastH = state.history && state.history.length ? state.history[state.history.length - 1] : null;
+    if (lastH && isFinite(lastH.profit)) {
+      const p = Math.round(lastH.profit);
+      deltaEl.textContent = (p >= 0 ? '+' : '−') + fmt(Math.abs(p)) + '/월';
+      deltaEl.className = 'money-delta ' + (p >= 0 ? 'up' : 'down');
+    } else { deltaEl.textContent = ''; deltaEl.className = 'money-delta'; }
+  }
   const yearNo = Math.floor(yearsElapsed(state)) + 1;
   const term = state.mode === 'normal' ? ' · ' + yearNo + '년 차 / ' + ECON.normalYears + '년'
              : state.mode === 'netzero' ? ' · ' + yearNo + '년 차 / ' + ECON.netZeroYears + '년' : ' · ' + yearNo + '년 차';
@@ -369,7 +380,7 @@ function renderTopbar(state) {
   if (typeof computeScore === 'function') {
     const sc = computeScore(state, 'complete');
     document.getElementById('score-value').textContent = fmt(sc.raw);
-    document.getElementById('score-stat').title = '국정 운영 점수 ' + fmt(sc.raw) + ' / 1,000 (지금까지 기준, 완주 가정)\n국민 행복 ' + sc.parts.happy + ' · 전력 시스템 ' + sc.parts.system + ' · 탄소 ' + sc.parts.carbon + ' · 경제 규모 ' + sc.parts.economy + ' · 자본 ' + sc.parts.capital + ' (각 100점 만점 × 2)';
+    document.getElementById('score-stat').title = '국정 운영 점수 ' + fmt(sc.raw) + ' / 1,000 (지금까지 기준, 완주 가정)\n' + [['국민 행복', 'happy'], ['전력 시스템', 'system'], ['탄소', 'carbon'], ['경제', 'economy'], ['자본', 'capital']].map((x) => x[0] + ' ' + Math.round(sc.parts[x[1]] * SCORE.weights[x[1]]) + '/' + SCORE.weights[x[1]] * 100).join(' · ');
   }
 
   const hp = state.happiness;
@@ -407,6 +418,8 @@ function renderTopbar(state) {
 
   const last = state.lastReport;
   let co2 = '탄소세 ' + fmt(state.carbonTax) + '원/t';
+  const priceIdx = costIndex(state);
+  if (priceIdx > 1.005) co2 += ' · 건설 물가 ×' + fmt(priceIdx, 2);
   if (last) {
     co2 = '지난달 CO₂ ' + fmt(last.energy.co2) + 't · ' +
       (last.blackoutHours > 0 ? '<span class="bad">정전 ' + last.blackoutHours + '시간</span>' : '<span class="good">정전 없음</span>') + ' · ' + co2;
@@ -527,8 +540,8 @@ function renderForecast(state) {
     const last = state.lastReport && state.lastReport.energy.h2;
     const h2Cost = m2.h2KgPerMWh * ECON.nh3CostPerKgH2 * m2.h2FuelMult / 1000;
     d += '<div class="row"><span>크래킹 ' + crackers + '기 · 수소 ' + fmt(h2Month / 1000, 0) + ' t/월 · 전력 ' + fmt(crackers * PLANTS.cracker.elecLoad * m2.crackerLoadMult) + ' MW 소비</span><b>' + (m2.h2Blend > 0 ? '가스 발전 최대 ' + fmt(h2Cover * 100) + '%를 수소로' : '터빈 테크 없음 → 전부 수출') + '</b></div>';
-    d += '<div class="row muted"><span>수소 연료비 ' + fmt(h2Cost) + '원/kWh (가스 복합 ' + fmt(plantStats(state, 'ccgt').fuelCost * state.gasPrice) + '원 + 탄소세) · 남는 수소 수출 마진 ' + fmt(ECON.nh3CostPerKgH2 * m2.h2FuelMult * ((1 + ECON.h2ExportMargin) * policyMods(state).h2Price - 1)) + '원/kg (수출로는 큰돈이 안 됨)</span></div>';
-    if (last) d += '<div class="row muted"><span>지난달 생산 ' + fmt(last.prod / 1000, 1) + ' t · 터빈 ' + fmt(last.burn / 1000, 1) + ' t (' + fmtMWh(last.gen) + ' 대체) · 수출 ' + fmt(last.export / 1000, 1) + ' t</span><span>수출 순이익 ' + fmt(state.lastReport.money.h2Rev || 0) + '억 · 터빈 연료(암모니아) ' + fmt(state.lastReport.money.h2Fuel || 0) + '억</span></div>';
+    d += '<div class="row muted"><span>수소 연료비 ' + fmt(h2Cost) + '원/kWh (가스 복합 ' + fmt(plantStats(state, 'ccgt').fuelCost * state.gasPrice) + '원 + 탄소세) · 남는 수소 수출 마진 ' + fmt(ECON.nh3CostPerKgH2 * m2.h2FuelMult * ((1 + ECON.h2ExportMargin) * policyMods(state).h2Price - 1)) + '원/kg (이웃 나라가 사 주는 한도까지만 마진이 붙고, 넘는 양은 원가 판매)</span></div>';
+    if (last) d += '<div class="row muted"><span>지난달 생산 ' + fmt(last.prod / 1000, 1) + ' t · 터빈 ' + fmt(last.burn / 1000, 1) + ' t (' + fmtMWh(last.gen) + ' 대체) · 수출 ' + fmt(last.export / 1000, 1) + ' t' + (last.sold !== undefined && last.export > last.sold + 1 ? ' (마진 붙는 한도 ' + fmt(last.sold / 1000, 1) + ' t · 한도 초과)' : '') + '</span><span>수출 순이익 ' + fmt(state.lastReport.money.h2Rev || 0) + '억 · 터빈 연료(암모니아) ' + fmt(state.lastReport.money.h2Fuel || 0) + '억</span></div>';
   }
   if (caps.link > 0) {
     const nd = neighborDemandCurve(state);
@@ -651,11 +664,11 @@ function renderSelected(state) {
   html += '<div class="actions">';
   if (p.upgradeTo && b.status === 'online') {
     const up = PLANTS[p.upgradeTo];
-    html += '<button class="small primary" data-action="upgrade" ' + (state.money < p.upgradeCost ? 'disabled' : '') + '>' +
-      up.name + '으로 업그레이드 (' + fmt(p.upgradeCost) + '억 · ' + p.upgradeMonths + '개월)</button>';
+    html += '<button class="small primary" data-action="upgrade" ' + (state.money < upgradeCostOf(state, b.type) ? 'disabled' : '') + '>' +
+      up.name + '으로 업그레이드 (' + fmt(upgradeCostOf(state, b.type)) + '억 · ' + p.upgradeMonths + '개월)</button>';
   }
   if (b.status !== 'demolishing') {
-    html += '<button class="small danger" data-action="demolish">철거 (' + ECON.demolishMonths + '개월 · 환급 ' + fmt(st.capex * ECON.demolishRefund) + '억)</button>';
+    html += '<button class="small danger" data-action="demolish">철거 (' + ECON.demolishMonths + '개월 · 환급 ' + fmt(paidCost(state, b) * ECON.demolishRefund) + '억)</button>';
   }
   html += '</div>';
   root.innerHTML = html;
@@ -1016,11 +1029,11 @@ function renderEnding(state, s) {
   const hint = scoreHints(state, s);
   const scoreCard = '<div class="card score-card"><div class="k">🏆 국정 운영 점수 (1,000점 만점)' + (s.termFactor < 1 ? ' · 임기 미완주 감점 ×' + fmt(s.termFactor, 2) : '') + '</div><div class="v">' + fmt(s.score) + '점</div>' +
     '<div class="score-bars">' +
-    bar('국민 행복', p.happy || 0, '집권 기간 평균 행복도', hint.happy) +
-    bar('전력 시스템', p.system || 0, '무정전 ' + fmt(d.reliability || 0) + '% · 기술 ' + (d.tiers || 0) + '/' + (d.tiersMax || 30), hint.system) +
-    bar('탄소', p.carbon || 0, '최근 3년 ' + (d.intenLast !== undefined ? d.intenLast.toFixed(2) : '-') + ' · 기간 평균 ' + (d.intenAvg !== undefined ? d.intenAvg.toFixed(2) : '-') + ' t/MWh (0.10 이하면 100 · 최근 3년 70%)', hint.carbon) +
-    bar('경제', p.economy || 0, '성장 ' + (d.growth || 0) + '/50 (인구 ' + fmt(d.popRatio || 1, 1) + '배 · 10배면 50) · 교역 ' + (d.trade || 0) + '/50 (수출 전력이 국내 소비의 ' + fmt((d.tradeShare || 0) * 100, 1) + '% · ' + fmt(ECON.tradeShareFull * 100) + '%면 50)', hint.economy) +
-    bar('자본', p.capital || 0, '자금 + 설비 가치 절반 = ' + fmt(d.worth || 0) + '억 (20만억이면 100)', hint.capital) +
+    bar('국민 행복 <small>배점 ' + SCORE.weights.happy * 100 + '</small>', p.happy || 0, '집권 기간 평균 행복도 ' + fmt(d.avgHappy !== undefined ? d.avgHappy : s.avgHappy, 1) + ' (' + SCORE.happyZero + '이면 0 · ' + SCORE.happyFull + '이면 100)', hint.happy) +
+    bar('전력 시스템 <small>배점 ' + SCORE.weights.system * 100 + '</small>', p.system || 0, '안정 공급 ' + fmt(d.reliability || 0) + '/100 (정전 시간 비율 ' + fmt((d.lostShare || 0) * 100, 2) + '% · ' + fmt(SCORE.lostShareZero * 100, 1) + '%면 0) × ' + fmt(SCORE.reliabilityShare * 100) + '% + 기술 ' + (d.tiers || 0) + '/' + (d.tiersMax || 36) + ' × ' + fmt((1 - SCORE.reliabilityShare) * 100) + '%', hint.system) +
+    bar('탄소 <small>배점 ' + SCORE.weights.carbon * 100 + '</small>', p.carbon || 0, '최근 3년 ' + (d.intenLast !== undefined ? d.intenLast.toFixed(2) : '-') + ' · 기간 평균 ' + (d.intenAvg !== undefined ? d.intenAvg.toFixed(2) : '-') + ' t/MWh (0.10 이하면 100 · 최근 3년 70%)', hint.carbon) +
+    bar('경제 <small>배점 ' + SCORE.weights.economy * 100 + '</small>', p.economy || 0, '성장 ' + (d.growth || 0) + '/' + SCORE.growthMax + ' (인구 ' + fmt(d.popRatio || 1, 1) + '배 · ' + ECON.growthScoreMax + '배면 ' + SCORE.growthMax + ') · 교역 ' + (d.trade || 0) + '/' + SCORE.tradeMax + ' (수출 전력이 국내 소비의 ' + fmt((d.tradeShare || 0) * 100, 1) + '% · ' + fmt(ECON.tradeShareFull * 100) + '%면 ' + SCORE.tradeMax + ')', hint.economy) +
+    bar('자본 <small>배점 ' + SCORE.weights.capital * 100 + '</small>', p.capital || 0, '자금 + 설비의 남은 가치 = ' + fmt(d.worth || 0) + '억 (' + fmt(SCORE.worthFull / 10000) + '만억이면 100 · 설비는 남은 수명만큼만 인정)', hint.capital) +
     '</div></div>';
   document.getElementById('ending-stats').innerHTML = scoreCard + cards.map((c) =>
     '<div class="card"><div class="k">' + c[0] + '</div><div class="v">' + c[1] + '</div><div class="s">' + c[2] + '</div></div>').join('');
@@ -1082,10 +1095,10 @@ function scoreHints(state, s) {
   const top = Object.entries(neg).sort((a, b) => a[1] - b[1]).filter(([k]) => HAPPY_CAUSE[k])[0];
   out.happy = (p.happy || 0) >= 90 ? '국민이 내내 만족했습니다.' : top ? '가장 많이 깎은 요인은 ' + HAPPY_CAUSE[top[0]][0] + '(누적 ' + fmt(top[1]) + ')입니다. ' + HAPPY_CAUSE[top[0]][1] : '';
   const boM = d.blackoutMonths !== undefined ? d.blackoutMonths : h.filter((x) => x.blackoutHours > 0).length;
-  out.system = (boM > 12 ? '정전이 있었던 달이 ' + boM + '개월입니다. 예비력 10~20%를 미리 확보하세요. ' : '') + ((d.tiers || 0) < (d.tiersMax || 36) * 0.6 ? '기술 단계가 ' + (d.tiers || 0) + '/' + (d.tiersMax || 36) + '입니다. R&D를 꾸준히 올리면 계통 점수가 오릅니다.' : '');
+  out.system = (boM > 0 ? '정전이 있었던 달이 ' + boM + '개월(' + fmt(d.blackoutHoursTotal !== undefined ? d.blackoutHoursTotal : h.reduce((a, x) => a + (x.blackoutHours || 0), 0)) + '시간대)입니다. 정전은 길수록 크게 깎이니 예비력 10~20%를 미리 확보하세요. ' : '임기 내내 정전이 없었습니다. ') + ((d.tiers || 0) < (d.tiersMax || 36) * 0.4 ? '기술 단계는 ' + (d.tiers || 0) + '/' + (d.tiersMax || 36) + '입니다 (배점의 ' + fmt((1 - SCORE.reliabilityShare) * 100) + '%).' : '');
   out.carbon = d.cleanYear ? ((p.carbon || 0) < 80 ? '무탄소 전환(원단위 0.20 아래)이 ' + d.cleanYear + '년차에 시작됐습니다. 10년차 안에 시작하면 기간 평균이 크게 내려갑니다.' : d.cleanYear + '년차에 전환을 시작해 평균도 낮게 유지했습니다.') : '임기 중 원단위가 0.20 아래로 내려간 적이 없습니다. 원전·재생·수소 어느 쪽이든 전환을 시작해야 합니다.';
-  out.economy = ((d.growth || 0) < 25 ? '조절 전원을 수요보다 앞서 깔면 산업·인구가 더 들어와 성장 점수가 오릅니다. ' : '') + ((d.trade || 0) < 10 ? '연계선을 깔아 남는 전기(낮의 재생·밤의 원전)를 이웃 나라에 팔면 교역 점수가 생깁니다.' : '');
-  out.capital = (p.capital || 0) < 70 ? '마지막 자산이 ' + fmt(d.worth || 0) + '억입니다. 설비 투자는 절반이 자산으로 남으니, 남는 돈은 수익 설비에 쓰는 편이 낫습니다.' : '';
+  out.economy = ((d.growth || 0) < SCORE.growthMax / 2 ? '조절 전원을 수요보다 앞서 깔면 산업·인구가 더 들어와 성장 점수가 오릅니다. ' : '') + ((d.trade || 0) < SCORE.tradeMax / 5 ? '연계선을 깔아 남는 전기(낮의 재생·밤의 원전)를 이웃 나라에 팔면 교역 점수가 생깁니다.' : '');
+  out.capital = (p.capital || 0) < 70 ? '마지막 자산이 ' + fmt(d.worth || 0) + '억입니다. 설비는 남은 수명만큼 자산으로 인정되니, 낡은 설비는 새것으로 바꾸고 남는 돈은 수익이 나는 설비에 쓰는 편이 낫습니다.' : '';
   return out;
 }
 
@@ -1532,7 +1545,7 @@ function renderTechRdPanel(state) {
   const lv = rdLevel(state);
   const staff = RD_STAGES.map((st) => ({ n: st.name, c: (state.rd || {})[st.id] || 0 })).filter((x) => x.c > 0);
   const total = staff.reduce((s, x) => s + x.c, 0);
-  const gates = (typeof TECH_TIER_RD !== 'undefined') ? TECH_TIER_RD : [20, 150, 300, 400];
+  const gates = (typeof TECH_TIER_RD !== 'undefined') ? TECH_TIER_RD : [20, 150, 300, 350];
   const nextGate = gates.find((g) => lv < g);
   let html = '<div class="trd-head"><span>R&amp;D 수준 <b>' + fmt(lv) + '</b></span><span>연구원 <b>' + total + '명</b></span><span>동시 연구 <b>' + researchActive(state) + '/' + researchSlots(state) + '</b></span></div>';
   // 등급별 인원: 여섯 칸 (없는 등급은 흐리게)

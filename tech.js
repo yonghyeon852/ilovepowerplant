@@ -134,8 +134,9 @@ const TECH_ORDER = ['gas', 'ccgt', 'nuclear', 'coal', 'solar', 'wind', 'ess', 'g
 
 // 실패할 때마다 그 트리의 다음 시도 확률에 더해지는 값
 const TECH_PITY = 0.08;
-// 단계별로 필요한 R&D 수준 (1단계 20, 2단계 150, 3단계 300, 4단계 400)
-const TECH_TIER_RD = [20, 150, 300, 400];
+// 단계별로 필요한 R&D 수준 (1단계 20, 2단계 150, 3단계 300, 4단계 350)
+//  4단계는 400이었으나 20년 임기 안에 너무 늦게 열려 본전도 못 찾는 경우가 많아 350으로 낮춤
+const TECH_TIER_RD = [20, 150, 300, 350];
 const TECH_TIER3_RD = TECH_TIER_RD[2];
 
 // R&D 상시 이점의 최대치 (수준이 오를수록 서서히 포화: f = lv / (lv + 67), 수준 100에서 약 60%)
@@ -489,6 +490,8 @@ function plantStats(state, type) {
   if (['nuclear', 'solar', 'wind', 'ess'].includes(p.kind) && typeof effectsNow === 'function') s.capex = Math.round(s.capex * effectsNow(state).capexMult);
   // 정책 노선: 친원전이면 원전·SMR 건설비 −15%, 탈원전이면 태양광·풍력·ESS 건설비 −20%
   if (typeof policyMods === 'function') { const pm = policyMods(state); if (p.kind === 'nuclear') s.capex = Math.round(s.capex * pm.nuclearCapex); if (['solar', 'wind', 'ess'].includes(p.kind)) s.capex = Math.round(s.capex * pm.cleanCapex); s.capex = Math.round(s.capex * pm.capexAll); if (p.kind === 'h2') s.capex = Math.round(s.capex * pm.h2Capex); }
+  // 건설 물가: 경제가 커질수록 건설비가 오름 (이 값에 비례하는 고정 유지비도 함께 오름)
+  if (typeof costIndex === 'function') s.capex = Math.round(s.capex * costIndex(state));
   s.buildMonths = Math.max(1, Math.round(s.buildMonths * perks.buildMult));
   return s;
 }

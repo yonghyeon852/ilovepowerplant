@@ -242,6 +242,18 @@ function econScale(state) {
   const popNow = state.cities.reduce((s, c) => s + c.pop, 0);
   return Math.max(1, (popNow / Math.max(1, pop0)) * Math.pow(1 + ECON.perCapitaGrowth, yearsElapsed(state)));
 }
+// 건설 물가 지수: 경제 규모가 커질수록 땅값·인건비·자재비가 올라 새 설비 건설비와 고정 유지비가 함께 오름 (시작은 1.0)
+function costIndex(state) {
+  return Math.pow(Math.max(1, econScale(state) / ECON.costIndexFrom), ECON.costIndexPower);
+}
+// 이 설비에 실제로 든 돈 (지을 때 낸 건설비 + 개조비). 기록이 없는 예전 저장본은 지금 건설비로 대신함
+function paidCost(state, b) {
+  return b.cost !== undefined ? b.cost : plantStats(state, b.type).capex;
+}
+// 개조 비용 (건설 물가 반영)
+function upgradeCostOf(state, type) {
+  return Math.round((PLANTS[type].upgradeCost || 0) * costIndex(state));
+}
 // 기본 증가율 배수: 연간 곡선 floor + boost·e^(−연차/tau)를 월 증가율로 바꿔 ECON.popGrowth 대비 배수로 돌려줌
 //  시작 ×1.7(연 13%) → 8년차 ×0.75(연 5.5%) → 20년차 ×0.36(연 2.6%)
 function earlyGrowthMult(state) {
@@ -483,7 +495,7 @@ function simulateMonth(state) {
     const nuclear = caps.nuclear;
     let coal = 0, ccgt = 0, gt = 0, smr = 0, exp = 0, imp = 0, curtail = 0, over = 0, unmet = 0, essIn = 0, essOut = 0;
     let marginal = null;
-    let h2Gen = 0, h2BurnHour = 0, h2ExportHour = 0, h2ProdHour = 0, crackServed = 0;
+    let h2Gen = 0, h2BurnHour = 0, h2ExportHour = 0, h2SoldHour = 0, h2ProdHour = 0, crackServed = 0;
     const load = demand + crackLoad;   // 크래킹 전력을 더한 부하 (모자라면 크래킹부터 줄임)
 
     // 계통운영자의 관성 제약: 비관성(태양광+풍력) 비중이 한도를 넘는 만큼은 출력 제한
@@ -580,6 +592,8 @@ function simulateMonth(state) {
       h2BurnHour = h2Gen * m.h2KgPerMWh;
     }
     h2ExportHour = Math.max(0, h2ProdHour - h2BurnHour);
+    // 수소 수출 시장: 이웃 나라가 마진을 주고 사 주는 양에는 한도가 있음. 넘는 양은 원가에 넘겨 이익이 없음 (크래킹을 끝없이 늘려도 돈이 불지 않음)
+    h2SoldHour = Math.min(h2ExportHour, neighborDemandCurve(state)[h] * ECON.h2MarketShare * ECON.h2KgPerMWh);
 
     // 램프 부족: 설비는 충분한데 출력을 제때 못 올려 생긴 미공급
     const fullCap = caps.smr + caps.coal + caps.ccgt + caps.gt;
@@ -636,7 +650,7 @@ function simulateMonth(state) {
 
     sum.demand += demand; sum.unmet += unmet; sum.rampShort += rampShort; sum.curtail += curtail; sum.over += over;
     sum.exp += exp; sum.imp += imp; sum.essIn += essIn; sum.essOut += essOut;
-    sum.h2Prod += h2ProdHour; sum.h2Burn += h2BurnHour; sum.h2Export += h2ExportHour; sum.h2Gen += h2Gen; sum.h2Fuel += h2Fuel; sum.crackLoad += crackServed;
+    sum.h2Prod += h2ProdHour; sum.h2Burn += h2BurnHour; sum.h2Export += h2ExportHour; sum.h2Sold = (sum.h2Sold || 0) + h2SoldHour; sum.h2Gen += h2Gen; sum.h2Fuel += h2Fuel; sum.crackLoad += crackServed;
     sum.gen.nuclear += nuclear + smr; sum.gen.coal += coal; sum.gen.ccgt += ccgt; sum.gen.gt += gt;
     sum.gen.solar += solar; sum.gen.wind += wind;
     sum.energyRev += energyRev; sum.rec += rec; sum.exportRev += exportRev; sum.importCost += importCost;
@@ -656,7 +670,7 @@ function simulateMonth(state) {
   const energy = {
     demand: scaleMWh(sum.demand), unmet: scaleMWh(sum.unmet), rampShort: scaleMWh(sum.rampShort), curtail: scaleMWh(sum.curtail),
     over: scaleMWh(sum.over), exp: scaleMWh(sum.exp), imp: scaleMWh(sum.imp), essIn: scaleMWh(sum.essIn), essOut: scaleMWh(sum.essOut),
-    h2: { prod: sum.h2Prod * days, burn: sum.h2Burn * days, export: sum.h2Export * days, gen: scaleMWh(sum.h2Gen), crackers, load: scaleMWh(sum.crackLoad) },   // kg (gen·load는 MWh)
+    h2: { prod: sum.h2Prod * days, burn: sum.h2Burn * days, export: sum.h2Export * days, sold: (sum.h2Sold || 0) * days, gen: scaleMWh(sum.h2Gen), crackers, load: scaleMWh(sum.crackLoad) },   // kg (gen·load는 MWh)
     gen: {}, co2: sum.co2 * days,
   };
   for (const k in sum.gen) energy.gen[k] = scaleMWh(sum.gen[k]);
@@ -678,7 +692,7 @@ function simulateMonth(state) {
 
   const money = {
     // 남는 수소 수출: 판매가(암모니아 원가 + 작은 마진, 사건·정책 배수 적용)에서 그 수소를 만드는 데 든 암모니아 값을 뺀 순이익
-    h2Rev: toEok(sum.h2Export * ECON.nh3CostPerKgH2 * m.h2FuelMult * ((1 + ECON.h2ExportMargin) * effectsNow(state).h2PriceMult * policyMods(state).h2Price - 1)),
+    h2Rev: toEok((sum.h2Sold || 0) * ECON.nh3CostPerKgH2 * m.h2FuelMult * ((1 + ECON.h2ExportMargin) * effectsNow(state).h2PriceMult * policyMods(state).h2Price - 1)),
     h2Fuel: toEok(sum.h2Fuel),   // 암모니아 연료비
     energyRev: toEok(sum.energyRev), rec: toEok(sum.rec), exportRev: toEok(sum.exportRev), capPay, patent, tax: toEok(sum.tax),
     fuel: toEok(sum.fuel), carbon: toEok(sum.carbon), om, varOm: toEok(sum.varOm), importCost: toEok(sum.importCost),
@@ -687,7 +701,7 @@ function simulateMonth(state) {
   };
   // 초과 이윤 환수(요금 규제): 최근 1년 이익이 투자 자본의 clawRoi(연 15%)를 넘으면 넘는 비율만큼 국내 정산 수입을 깎음 (정책별 환수 비율: 자유화 50% · 기본 60% · 규제 70%)
   {
-    const invested = state.buildings.filter((b) => b.status !== 'demolishing').reduce((s, b) => s + plantStats(state, b.type).capex, 0);
+    const invested = state.buildings.filter((b) => b.status !== 'demolishing').reduce((s, b) => s + paidCost(state, b), 0);   // 투자 자본 = 실제로 낸 건설비
     const hist12 = (state.history || []).slice(-12);
     const prof12 = hist12.length ? hist12.reduce((s, x) => s + (x.profit || 0), 0) * (12 / hist12.length) : 0;
     // 이번 달 이익(환수 전)이 허용 이익(투자 자본 × clawRoi ÷ 12)을 넘으면 초과분의 pm.clawMax만큼 환수

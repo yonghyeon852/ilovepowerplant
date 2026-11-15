@@ -282,7 +282,7 @@ function advanceMonth() {
     } else if (b.status === 'demolishing') {
       b.monthsLeft--;
       if (b.monthsLeft <= 0) {
-        state.money += plantStats(state, b.type).capex * ECON.demolishRefund;
+        state.money += paidCost(state, b) * ECON.demolishRefund;
         state.buildings.splice(i, 1);
         if (state.selectedId === b.id) state.selectedId = null;
         continue;
@@ -414,24 +414,36 @@ function milestone(text) {
 
 // ------------------------------------------------------------
 // 종합 점수 (국정 운영 점수, 1,000점 만점)
-//  다섯 축을 각각 0~100으로 매겨 합산 × 2. 임기를 못 채우면 채운 비율만큼 깎임
-//  - 국민 행복: 집권 기간 평균 행복도
-//  - 전력 시스템: 무정전(60%) + 기술(테크 단계 수, 40%)
-//  - 탄소: 마지막 해 배출 원단위(50%) + 집권 기간 평균 원단위(50%)
-//  - 경제 규모: 인구가 몇 배로 늘었나 (4배면 100)
-//  - 자본: 자금 + 설비 가치의 절반 (20만억이면 100, 제곱근 척도)
+//  다섯 축을 각각 0~100으로 매긴 뒤 배점(SCORE.weights)을 곱해 합산. 임기를 못 채우면 채운 비율만큼 깎임
+//  - 국민 행복 (200): 집권 기간 평균 행복도. 55면 0, 92면 100 (완주한 판끼리도 차이가 나도록 눈금을 넓힘)
+//  - 전력 시스템 (250): 안정 공급 80% + 기술 20%. 안정 공급은 정전 "시간 비율"로 셈 (전체 시간의 2.5%가 정전이면 0)
+//  - 탄소 (200): 최근 3년 배출 원단위 70% + 집권 기간 평균 30%
+//  - 경제 (200): 성장 75(인구 배수, 로그 눈금) + 교역 25(수출 전력량 비중)
+//  - 자본 (150): 자금 + 설비의 남은 가치(건설비 × 남은 수명 비율). 40만억이면 100, 제곱근 척도
 // ------------------------------------------------------------
+const SCORE = {
+  weights: { happy: 2, system: 2.5, carbon: 2, economy: 2, capital: 1.5 },   // 항목 점수(0~100)에 곱하는 배점. 합이 10이라 1,000점 만점
+  happyZero: 55, happyFull: 92,   // 평균 행복도 눈금
+  lostShareZero: 0.025,           // 정전 시간 비율이 이 값이면 안정 공급 0점
+  reliabilityShare: 0.8,          // 전력 시스템 중 안정 공급 비중 (나머지는 기술)
+  growthMax: 75, tradeMax: 25,    // 경제 항목 안의 성장·교역 배분
+  worthFull: 400000,              // 자본 만점 기준 (억)
+};
 function computeScore(state, reason) {
   const h = state.history;
   const n = Math.max(1, h.length);
   const avgHappy = h.reduce((s, x) => s + (x.happy !== undefined ? x.happy : state.happiness), 0) / n;
+  const happyScore = 100 * clamp((avgHappy - SCORE.happyZero) / (SCORE.happyFull - SCORE.happyZero), 0, 1);
   const blackoutMonths = h.filter((x) => x.blackoutHours > 0).length;
-  const reliability = 100 * (1 - blackoutMonths / n);
+  // 안정 공급: 정전이 난 달 수가 아니라 정전 시간의 비율로 셈 → 길고 잦은 정전일수록 크게 깎이고, 한 번도 안 나면 100
+  const blackoutHoursTotal = h.reduce((s, x) => s + (x.blackoutHours || 0), 0);
+  const lostShare = blackoutHoursTotal / (24 * n);
+  const reliability = 100 * clamp(1 - lostShare / SCORE.lostShareZero, 0, 1);
   const tiers = TECH_ORDER.reduce((s, k) => s + (state.tech[k] || 0), 0);
   const tiersMax = TECH_ORDER.reduce((s, k) => s + TECH[k].tiers.length, 0);
   const tech = 100 * tiers / tiersMax;
-  const system = 0.6 * reliability + 0.4 * tech;
-  // 탄소: 마지막 1년 배출 원단위(현재 수준)와 집권 기간 평균 원단위(얼마나 일찍 전환했나)를 반반. 0.40 t/MWh면 0, 0.10 이하면 100
+  const system = SCORE.reliabilityShare * reliability + (1 - SCORE.reliabilityShare) * tech;
+  // 탄소 원단위 눈금: 0.40 t/MWh면 0, 0.10 이하면 100
   const intenScore = (v) => clamp(100 * (0.40 - v) / 0.30, 0, 100);
   // 탄소: 최근 3년 원단위(지금 얼마나 깨끗한가) 70% + 기간 평균(얼마나 일찍 전환했나) 30%
   const last36 = h.slice(-36);
@@ -441,28 +453,34 @@ function computeScore(state, reason) {
   const cleanIdx = h.findIndex((x) => x.inten !== undefined && x.inten < 0.20);   // 무탄소 전환 시점 (코칭용)
   const pop0 = h.length && h[0].pop ? h[0].pop : state.cities.reduce((s, c) => s + c.pop, 0);
   const popNow = state.cities.reduce((s, c) => s + c.pop, 0);
-  // 경제 = 성장(인구 배수, 로그 눈금: 2.5배 0 → 10배 50) + 교역(순수출 수입 ÷ 발전 수입: 8%면 50)
+  // 경제 = 성장(인구 배수, 로그 눈금: 2.5배 0 → 10배 SCORE.growthMax) + 교역(수출 전력량 ÷ 국내 소비: tradeShareFull이면 SCORE.tradeMax)
   const popRatio = popNow / Math.max(1, pop0);
-  const growth = 50 * clamp(Math.log(Math.max(0.01, popRatio) / ECON.growthScoreMin) / Math.log(ECON.growthScoreMax / ECON.growthScoreMin), 0, 1);
+  const growth = SCORE.growthMax * clamp(Math.log(Math.max(0.01, popRatio) / ECON.growthScoreMin) / Math.log(ECON.growthScoreMax / ECON.growthScoreMin), 0, 1);
   const tr = state.trade || { exportRev: 0, h2Rev: 0, importCost: 0, energyRev: 0 };
   // 교역 = 임기 동안 수출한 전력량 ÷ 국내 소비 전력량 (돈이 아니라 양으로 셈: 수출 단가는 국내보다 싸서 돈으로는 늘 작게 보임. 수소 수출은 제외)
   const tradeNet = Math.round(tr.exportRev);
   const tradeShare = (tr.demandMWh || 0) > 0 ? (tr.expMWh || 0) / tr.demandMWh : 0;
-  const trade = 50 * clamp(tradeShare / ECON.tradeShareFull, 0, 1);
+  const trade = SCORE.tradeMax * clamp(tradeShare / ECON.tradeShareFull, 0, 1);
   const economy = growth + trade;
-  const invested = state.buildings.filter((b) => b.status !== 'demolishing').reduce((s, b) => s + plantStats(state, b.type).capex, 0);
+  // 설비 가치 = 건설비 × 남은 수명 비율 (새 설비·공사 중 설비는 제값, 수명이 끝난 설비는 0).
+  //  현금과 같은 무게로 쳐서 임기 말에 투자를 멈추는 쪽이 유리하지 않게 하고, 낡은 설비만 남긴 채 끝내면 낮게 나오게 함
+  const fleetValue = state.buildings.filter((b) => b.status !== 'demolishing' && b.status !== 'retired').reduce((s, b) => {
+    const left = b.status === 'building' ? 1 : clamp(1 - (b.age || 0) / plantLifeMonths(b.type), 0, 1);
+    return s + paidCost(state, b) * left;
+  }, 0);
   // 새 도시 조성비도 나라에 대한 투자로 쳐서 자본 점수가 도시를 세울 때마다 깎이지 않게 함
   const cityInvest = state.cityInvestTotal !== undefined ? state.cityInvestTotal : Math.max(0, state.cities.length - 3) * ECON.foundCityCost;
-  const worth = Math.max(0, state.money + invested * 0.5 + cityInvest * 0.5);
-  const capital = clamp(100 * Math.sqrt(worth / 200000), 0, 100);
+  const worth = Math.max(0, state.money + fleetValue + cityInvest * 0.5);
+  const capital = clamp(100 * Math.sqrt(worth / SCORE.worthFull), 0, 100);
   const termYears = state.mode === 'normal' ? ECON.normalYears : state.mode === 'netzero' ? ECON.netZeroYears : null;
   const completed = reason === 'complete' || reason === 'netzero';
   const termFactor = completed || !termYears ? 1 : clamp(yearsElapsed(state) / termYears, 0, 1);
-  const raw = (avgHappy + system + carbon + economy + capital) * 2;
+  const W = SCORE.weights;
+  const raw = happyScore * W.happy + system * W.system + carbon * W.carbon + economy * W.economy + capital * W.capital;
   return {
     total: Math.round(raw * termFactor), raw: Math.round(raw), termFactor,
-    parts: { happy: Math.round(avgHappy), system: Math.round(system), carbon: Math.round(carbon), economy: Math.round(economy), capital: Math.round(capital) },
-    detail: { reliability: Math.round(reliability), tech: Math.round(tech), tiers, tiersMax, intenLast, intenAvg, popRatio, worth: Math.round(worth),
+    parts: { happy: Math.round(happyScore), system: Math.round(system), carbon: Math.round(carbon), economy: Math.round(economy), capital: Math.round(capital) },
+    detail: { avgHappy, lostShare, blackoutHoursTotal, fleetValue: Math.round(fleetValue), reliability: Math.round(reliability), tech: Math.round(tech), tiers, tiersMax, intenLast, intenAvg, popRatio, worth: Math.round(worth),
       growth: Math.round(growth), trade: Math.round(trade), tradeShare, tradeNet: Math.round(tradeNet), cleanYear: cleanIdx >= 0 ? Math.floor(cleanIdx / 12) + 1 : null, blackoutMonths },
   };
 }
@@ -498,7 +516,7 @@ function finish(title, text, reason) {
 // ------------------------------------------------------------
 // 랭킹 (브라우저에 저장)
 // ------------------------------------------------------------
-const RANK_KEY = 'ilpp-rankings';
+const RANK_KEY = 'ilpp-rankings-v2';   // v2: 점수 계산 방식이 바뀌어 예전 기록(ilpp-rankings)과 섞이지 않게 새 저장 칸을 씀
 function loadRankings() {
   try { return JSON.parse(localStorage.getItem(RANK_KEY) || '[]'); } catch (e) { return []; }
 }
@@ -578,6 +596,7 @@ function addBuilding(type, col, row, instant) {
     coastal: info.coastal,
     mountain: !!info.mountain,
     age: instant ? randInt(96) : 0,          // 시작 설비는 0~8년 된 상태
+    cost: info.ok ? info.cost : plantStats(state, type).capex,   // 실제로 낸 건설비 (환수 기준인 투자 자본과 자본 점수에 씀)
   };
   state.buildings.push(b);
   return b;
@@ -611,8 +630,10 @@ function upgradeSelected() {
   if (!b || b.status !== 'online') return;
   const p = PLANTS[b.type];
   if (!p.upgradeTo) return;
-  if (state.money < p.upgradeCost) { showMessage('✕ 자금이 부족합니다'); return; }
-  state.money -= p.upgradeCost;
+  const upCost = upgradeCostOf(state, b.type);
+  if (state.money < upCost) { showMessage('✕ 자금이 부족합니다'); return; }
+  state.money -= upCost;
+  b.cost = paidCost(state, b) + upCost;
   b.status = 'upgrading'; b.upgradeFrom = b.type; b.monthsLeft = p.upgradeMonths;
   showMessage(PLANTS[p.upgradeTo].name + ' 업그레이드 시작 · ' + p.upgradeMonths + '개월 동안 가동 중단', 3000);
   saveGame(); renderAll();
@@ -624,7 +645,7 @@ function demolishSelected() {
   b.status = 'demolishing';
   b.monthsLeft = ECON.demolishMonths;
   delete b.upgradeFrom;
-  showMessage(PLANTS[b.type].name + ' 철거 시작 · ' + ECON.demolishMonths + '개월 뒤 자리가 비고 ' + fmt(plantStats(state, b.type).capex * ECON.demolishRefund) + '억 환급');
+  showMessage(PLANTS[b.type].name + ' 철거 시작 · ' + ECON.demolishMonths + '개월 뒤 자리가 비고 ' + fmt(paidCost(state, b) * ECON.demolishRefund) + '억 환급');
   saveGame(); renderAll();
 }
 
@@ -633,7 +654,7 @@ function demolishSelected() {
 // ------------------------------------------------------------
 // 새 도시 조성비: 정책 배수 × (4번째 도시부터 하나당 +cityCostStep). 땅이 귀해질수록 비싸짐
 function cityFoundCost(state) {
-  return Math.round(ECON.foundCityCost * policyMods(state).cityCost * (1 + ECON.cityCostStep * Math.max(0, state.cities.length - 3)));
+  return Math.round(ECON.foundCityCost * policyMods(state).cityCost * (1 + ECON.cityCostStep * Math.max(0, state.cities.length - 3)) * costIndex(state));   // 건설 물가 반영
 }
 function startCityDraft() {
   if (state.finished) return;
@@ -700,13 +721,15 @@ function confirmCityDraft() {
   state.money -= cityCost;
   state.cityInvestTotal = (state.cityInvestTotal || 0) + cityCost;   // 점수의 자본 항목에 절반이 자산으로 반영
   // 새 도시는 과밀 도시의 인구를 나눠 받는 데 더해, 새 터전을 보고 밖에서 들어오는 신규 인구도 생김 (총인구 증가)
-  const newcomers = ECON.cityNewcomers * limit * effNew;
+  // 도시가 많아질수록 새 도시가 밖에서 끌어오는 신규 인구는 줄어듦 → 도시를 끝없이 세워 인구(성장 점수)를 사는 것을 막음
+  const newcomerFade = Math.max(ECON.cityNewcomerMin, 1 - ECON.cityNewcomerFade * Math.max(0, state.cities.length - ECON.cityNewcomerFadeFrom));
+  const newcomers = ECON.cityNewcomers * limit * effNew * newcomerFade;
   newPop += newcomers;
   state.cities.push(makeCity(d.tiles.slice(), newPop, name));
   milestone('🏙 새 도시 ' + name + ' 조성');
   state.cityDraft = null;
   document.getElementById('city-name').value = '';
-  showMessage('🏙 ' + name + ' 조성 완료 · 이주 ' + fmt(newPop - newcomers) + '만 명 + 신규 유입 ' + fmt(newcomers) + '만 명', 3500);
+  showMessage('🏙 ' + name + ' 조성 완료 · 이주 ' + fmt(newPop - newcomers) + '만 명 + 신규 유입 ' + fmt(newcomers) + '만 명' + (newcomerFade < 1 ? ' (도시가 많아 신규 유입이 평소의 ' + Math.round(newcomerFade * 100) + '%)' : ''), 3500);
   saveGame();
   renderAll();
 }
@@ -761,6 +784,8 @@ function render() {
   if (state.zoom && state.zoom < zoomMin()) { state.zoom = zoomMin(); setView(state.view.col, state.view.row); }
   const view = state.view;
   const z = zoomOf();
+  const zoomHint = document.getElementById('zoom-hint');   // 지도 전체를 보는 동안만 확대 안내 표시
+  if (zoomHint) zoomHint.classList.toggle('hidden', !isFullMapView());
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1087,6 +1112,34 @@ function flashTab(msg) {
 }
 
 // ------------------------------------------------------------
+// 용어 풀이 (상단 용어 버튼)
+// ------------------------------------------------------------
+const GLOSSARY = [
+  ['SMP (전기 도매가격)', '그 시간에 돌아간 발전기 중 가장 비싼 발전기의 원가에 마진을 붙인 값입니다. 모든 전기가 이 값으로 팔리므로, 원가가 싼 발전기일수록 많이 남습니다. 싼 발전기를 많이 늘리면 이 값 자체가 내려가 판매 수입은 줄 수 있습니다. 월평균 ' + ECON.smpThreshold + '원/kWh를 넘으면 행복도가 떨어지고, ' + ECON.smpCheap + '원 아래면 오릅니다.'],
+  ['용량 요금', '발전량을 조절할 수 있는 설비(가스·석탄·원자력·ESS)가 대기해 주는 대가로 매달 받는 돈입니다. 전기를 안 팔아도 나오지만, 최대 수요의 ' + ECON.capacityReserveCap + '배까지만 줍니다.'],
+  ['여유 (예비력)', '공급 능력이 최대 수요보다 얼마나 많은지입니다. 모자라면 정전이 나고, ' + Math.round((ECON.inducedReserve - 1) * 100) + '%를 넘게 남으면 사람이 몰려와 수요가 더 빨리 늘어납니다.'],
+  ['기저 전원 · 정산조정계수', '원자력·SMR·석탄처럼 싸게 꾸준히 도는 발전기입니다. 너무 많이 남지 않도록 SMP의 ' + Math.round(ECON.baseloadSettle * 100) + '%만 받습니다 (전력시장 정책에 따라 달라짐).'],
+  ['램프 (출력 조절 속도)', '한 시간에 출력을 바꿀 수 있는 폭입니다. 가스터빈 100%, 복합발전 50%, 석탄 20%. 원자력은 항상 100%로만 돕니다.'],
+  ['출력 제한 · 과잉 발전', '전기가 수요보다 많이 남아 버리는 상황입니다. 그 시간의 SMP가 바닥값(' + ECON.smpFloor + '원)으로 떨어집니다. ESS에 담거나 수출하면 줄일 수 있습니다.'],
+  ['초과 이윤 환수', '한 달 이익이 투자 자본(지은 설비 값)의 연 ' + Math.round(ECON.clawRoi * 100) + '% 수준을 넘으면, 넘는 부분의 절반 이상을 정부가 가져갑니다. 비율은 전력시장 정책에 따라 달라집니다.'],
+  ['탄소세', '탄소 1톤을 배출할 때마다 내는 돈입니다. ' + fmt(ECON.carbonTaxStart) + '원에서 시작해 매년 ' + Math.round(ECON.carbonTaxGrowth * 100) + '%씩 오릅니다 (최대 ' + fmt(ECON.carbonTaxMax) + '원).'],
+  ['탄소 원단위 (t/MWh)', '전기 1MWh를 만들 때 나온 탄소량입니다. ' + ECON.intensityStartYear + '년 차부터 기준이 생겨 ' + ECON.intensityStart.toFixed(2) + '에서 ' + ECON.intensityEndYear + '년 차 ' + ECON.intensityEnd.toFixed(2) + '까지 내려가고, 기준을 넘으면 매달 행복도가 떨어집니다.'],
+  ['계통 안정도 · 비관성 비중', '태양광·풍력·ESS는 돌아가는 터빈이 없어 주파수를 잡아 주지 못합니다. 이 비중이 ' + Math.round(ECON.inertiaLimit * 100) + '%를 넘는 시간에는 주파수 사고로 정전이 날 수 있습니다 (계통 테크로 한도 상승).'],
+  ['REC (재생에너지 보조금)', '태양광·풍력이 만든 전기에 얹어 주는 보조금입니다. kWh당 ' + ECON.rec + '원에서 시작해 ' + ECON.recYears + '년에 걸쳐 0이 됩니다.'],
+  ['건설 물가', '경제(전력 수요)가 시작의 ' + ECON.costIndexFrom + '배를 넘어 커질수록 땅값·인건비·자재비가 올라 새 설비 건설비와 고정 유지비가 함께 오릅니다. 지도 아래 칸에 지금 배수가 표시됩니다. 건설비를 깎는 테크와 R&D는 후반으로 갈수록 값어치가 커집니다.'],
+  ['수소 수출', '남는 수소는 이웃 나라에 팔 수 있지만, 마진을 주고 사 주는 양에는 한도가 있습니다 (이웃 전력 수요의 ' + Math.round(ECON.h2MarketShare * 100) + '%를 수소로 돌릴 만큼). 한도를 넘는 양은 원가에 넘겨 이익이 없습니다.'],
+  ['R&D 수준', '연구원을 고용하면 오르는 수치입니다. 높을수록 테크 연구 성공 확률이 오르고, 더 높은 단계의 연구가 열립니다.'],
+];
+(function () {
+  const box = document.getElementById('glossary'); const list = document.getElementById('glossary-list'); const open = document.getElementById('glossary-open');
+  if (!box || !list || !open) return;
+  list.innerHTML = GLOSSARY.map((g) => '<div><dt>' + g[0] + '</dt><dd>' + g[1] + '</dd></div>').join('');
+  open.addEventListener('click', () => box.classList.remove('hidden'));
+  document.getElementById('glossary-close').addEventListener('click', () => box.classList.add('hidden'));
+  box.addEventListener('click', (e) => { if (e.target === box) box.classList.add('hidden'); });
+})();
+
+// ------------------------------------------------------------
 // 단축키
 // ------------------------------------------------------------
 document.addEventListener('keydown', (e) => {
@@ -1095,6 +1148,8 @@ document.addEventListener('keydown', (e) => {
   const startOpen = !document.getElementById('start').classList.contains('hidden');
   const overOpen  = !document.getElementById('gameover').classList.contains('hidden');
   const decisionOpen = !document.getElementById('decision').classList.contains('hidden');
+  const glossaryEl = document.getElementById('glossary');
+  if (glossaryEl && !glossaryEl.classList.contains('hidden')) { if (e.key === 'Escape') glossaryEl.classList.add('hidden'); return; }
   if (startOpen || overOpen || decisionOpen) return;
 
   const key = e.key, code = e.code;
