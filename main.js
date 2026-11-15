@@ -89,7 +89,7 @@ function newGame(mode) {
       }
     }
   }
-  centerView(main.center.col, main.center.row);
+  fullMapView();   // 시작하면 지도 전체가 한눈에 보이게
 
   startMonth(false);
   // 시작 유예: 초기 인구를 시작 설비에 맞춰, 가장 수요가 큰 계절에도 8%쯤 여유가 있게 (설비 짓는 데 걸리는 시간을 감안)
@@ -727,6 +727,19 @@ function setView(col, row) {
   state.view.row = clamp(row, 0, Math.max(0, ROWS - visRows()));
 }
 function centerView(col, row) { setView(col - visCols() / 2, row - visRows() / 2); }
+// 지도 전체가 화면에 딱 맞는 보기 (가장 많이 축소 + 왼쪽 위 끝)
+function fullMapView() { state.zoom = zoomMin(); setView(0, 0); }
+function isFullMapView() { return zoomOf() <= zoomMin() + 1e-6; }
+// 캔버스 크기가 바뀌면 다시 맞춤. 지도 전체를 보고 있었다면 새 크기에서도 지도 전체가 보이게 유지
+function refitMapCanvas() {
+  const wasFull = !!(state && state.view) && isFullMapView();
+  const changed = fitMapCanvas();
+  if (changed && state && state.view) {
+    if (wasFull) fullMapView();
+    else { state.zoom = clamp(zoomOf(), zoomMin(), ZOOM_MAX); setView(state.view.col, state.view.row); }
+  }
+  return changed;
+}
 
 // 마우스가 가리키는 칸이 제자리에 있도록 확대·축소
 function zoomAt(newZoom, clientX, clientY) {
@@ -744,7 +757,7 @@ function zoomAt(newZoom, clientX, clientY) {
 // 그리기
 // ------------------------------------------------------------
 function render() {
-  if (fitMapCanvas() && state.view) { state.zoom = clamp(zoomOf(), zoomMin(), ZOOM_MAX); setView(state.view.col, state.view.row); }   // 지도 칸 크기가 바뀌었으면 캔버스부터 맞추고, 최소 배율도 다시 적용
+  refitMapCanvas();   // 지도 칸 크기가 바뀌었으면 캔버스부터 맞추고, 최소 배율도 다시 적용
   if (state.zoom && state.zoom < zoomMin()) { state.zoom = zoomMin(); setView(state.view.col, state.view.row); }
   const view = state.view;
   const z = zoomOf();
@@ -1227,7 +1240,7 @@ function loadGame() {
     if (!state.neighborPeak) state.neighborPeak = neighborBasePeak(state);
     if (state.h2Ratio === undefined) state.h2Ratio = 0.5;
     if (!state.view) state.view = { col: 0, row: 0 };
-    if (!state.zoom) state.zoom = 1;
+    fullMapView();   // 이어하기도 지도 전체가 보이는 화면에서 시작
     for (const b of state.buildings) if (b.age === undefined) b.age = 0;
     return true;
   } catch (err) { return false; }
@@ -1236,6 +1249,17 @@ function loadGame() {
 // ------------------------------------------------------------
 // 시작
 // ------------------------------------------------------------
+// 시작 화면 뒤 배경 지도: 지도 전체가 캔버스에 딱 맞게 그림
+let startPreviewGrid = null;
+function drawStartPreview() {
+  if (!startPreviewGrid) return;
+  const s = zoomMin();
+  ctx.save();
+  ctx.setTransform(s, 0, 0, s, 0, 0);
+  drawTerrain(ctx, startPreviewGrid, { col: 0, row: 0, cols: COLS, rows: ROWS });
+  ctx.restore();
+}
+
 (function init() {
   try {
     const rawSave = localStorage.getItem(SAVE_KEY);
@@ -1253,12 +1277,9 @@ function loadGame() {
     if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); document.querySelector('#start .mode[data-mode="normal"]').click(); }
   });
 
-  // 시작 화면 뒤 배경 지도
-  const previewGrid = generateMap();
-  ctx.save();
-  ctx.translate(-16 * TILE, -12 * TILE);
-  drawTerrain(ctx, previewGrid, { col: 16, row: 12 });
-  ctx.restore();
+  // 시작 화면 뒤 배경 지도 (지도 전체)
+  startPreviewGrid = generateMap();
+  drawStartPreview();
 })();
 
 // 부도 한도 (억): 기본 ECON.bankruptAt, 최근 12개월 수입 합의 절반이 더 크면 그만큼
@@ -1271,7 +1292,7 @@ function bankruptLimit(state) {
 // 창 크기가 바뀌면 지도 캔버스도 다시 맞추고 그림
 (function () {
   let t = null;
-  const refit = () => { clearTimeout(t); t = setTimeout(() => { if (fitMapCanvas() && state) { if (state.view) setView(state.view.col, state.view.row); render(); } }, 100); };
+  const refit = () => { clearTimeout(t); t = setTimeout(() => { if (refitMapCanvas()) { if (state) render(); else drawStartPreview(); } }, 100); };
   window.addEventListener('resize', refit);
   if (typeof ResizeObserver !== 'undefined') { const ro = new ResizeObserver(refit); const bd = document.getElementById('board'); if (bd) ro.observe(bd); }
   setInterval(refit, 1000);   // 안전망: 이벤트를 놓쳐도 1초 안에 맞춤
