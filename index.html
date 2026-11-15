@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>I love power plant</title>
-  <link rel="stylesheet" href="style.css?v=20261116075433">
+  <link rel="stylesheet" href="style.css?v=20261116080327">
 </head>
 <body>
 
@@ -316,7 +316,7 @@
   <div id="rankings" class="overlay hidden">
     <div class="modal wide">
       <div class="rank-head"><h2 style="margin:0">🏆 랭킹</h2><button class="small" data-rank-clear>전체 삭제</button></div>
-      <p class="muted" style="font-size:0.8rem">종합 점수(국정 운영 점수 1,000점 만점 = 국민 행복 200 · 전력 시스템 250 · 탄소 200 · 경제 200 · 자본 150, 임기를 못 채우면 채운 비율만큼 감점), 자본, 행복도, 재임 기간(무한 모드) 랭킹이 있습니다. 기록은 이 브라우저에만 저장됩니다.</p>
+      <p class="muted" style="font-size:0.8rem">종합 점수(국정 운영 점수 1,000점 만점 = 국민 행복 200 · 전력 시스템 250 · 탄소 200 · 경제 200 · 자본 150, 임기를 못 채우면 채운 비율만큼 감점)가 높은 순서입니다. <b>상세</b>를 누르면 그 기록의 엔딩 때 전력망 지도와 운영 기록을 볼 수 있습니다. 내 기록은 이 브라우저에만 저장되고, "기본 기록"은 게임에 들어 있는 기록입니다.</p>
       <div id="rankings-list" class="rank-wrap"></div>
       <div class="modal-actions">
         <button id="rankings-close" class="primary">닫기</button>
@@ -324,14 +324,23 @@
     </div>
   </div>
 
-  <script src="map.js?v=20261116075433"></script>
-  <script src="plants.js?v=20261116075433"></script>
-  <script src="tech.js?v=20261116075433"></script>
-  <script src="events.js?v=20261116075433"></script>
-  <script src="events2.js?v=20261116075433"></script>
-  <script src="tutorial.js?v=20261116075433"></script>
-  <script src="sim.js?v=20261116075433"></script>
-  <script src="ui.js?v=20261116075433"></script>
-  <script src="main.js?v=20261116075433"></script>
+  <div id="rank-detail" class="overlay hidden">
+    <div class="modal wide">
+      <div id="rank-detail-body"></div>
+      <div class="modal-actions"><button id="rank-detail-close" class="primary">닫기</button></div>
+    </div>
+  </div>
+
+  <script src="map.js?v=20261116080327"></script>
+  <script src="plants.js?v=20261116080327"></script>
+  <script src="tech.js?v=20261116080327"></script>
+  <script src="events.js?v=20261116080327"></script>
+  <script src="events2.js?v=20261116080327"></script>
+  <script src="tutorial.js?v=20261116080327"></script>
+  <script src="sim.js?v=20261116080327"></script>
+  <script src="ui.js?v=20261116080327"></script>
+  <script src="rankings_seed.js?v=20261116080327"></script>
+  <script src="rankdetail.js?v=20261116080327"></script>
+  <script src="main.js?v=20261116080327"></script>
 </body>
 </html>

@@ -1186,10 +1186,10 @@ function renderEndingRank(s) {
 function renderRankView(box, opts) {
   opts = opts || {};
   box.classList.add('rank-view');
-  const tabKey = box.dataset.tab || 'money';
+  const tabKey = box.dataset.tab || RANK_TABS[0].key;
   box.dataset.highlight = opts.highlight || '';
   box.dataset.limit = opts.limit || '';
-  const all = loadRankings();
+  const all = typeof allRankings === 'function' ? allRankings() : loadRankings();   // 게임에 들어 있는 기본 기록 + 내 기록
   let list = rankSorted(all, tabKey);
   if (opts.limit) list = list.slice(0, opts.limit);
   const tab = RANK_TABS.find((t) => t.key === tabKey) || RANK_TABS[0];
@@ -1204,14 +1204,15 @@ function renderRankView(box, opts) {
   const mainCol = { score: '종합 점수', money: '최종 자금', happy: '평균 행복도', years: '재임 기간' }[tabKey];
   html += '<table class="rank-table"><tr><th>#</th><th>이름</th><th>모드</th><th>결과</th><th class="main">' + mainCol + '</th>' +
     (tabKey !== 'years' ? '<th>재임</th>' : '') + (tabKey !== 'happy' ? '<th>평균 행복도</th>' : '') + (tabKey !== 'money' ? '<th>최종 자금</th>' : '') +
-    '<th>날짜</th>' + (opts.deletable ? '<th></th>' : '') + '</tr>';
+    '<th>날짜</th><th>지도·기록</th>' + (opts.deletable ? '<th></th>' : '') + '</tr>';
   list.forEach((r, i) => {
     const main = tabKey === 'score' ? fmt(r.score || 0) + '점' : tabKey === 'money' ? fmt(r.money) + '억' : tabKey === 'happy' ? fmt(r.avgHappy, 1) : fmt(r.years, 1) + '년';
     html += '<tr' + (opts.highlight && r.id === opts.highlight ? ' class="me"' : '') + '><td>' + (i + 1) + '</td><td>' + escapeHtml(r.name) + '</td><td>' + (MODE_LABEL[r.mode] || r.mode) + '</td><td>' + (REASON_LABEL[r.reason] || r.reason) + '</td>' +
       '<td class="main"><b>' + main + '</b></td>' +
       (tabKey !== 'years' ? '<td>' + fmt(r.years, 1) + '년</td>' : '') + (tabKey !== 'happy' ? '<td>' + fmt(r.avgHappy, 1) + '</td>' : '') + (tabKey !== 'money' ? '<td>' + fmt(r.money) + '억</td>' : '') +
       '<td>' + (r.date || '') + '</td>' +
-      (opts.deletable ? '<td><button class="small del" data-rank-del="' + r.id + '">삭제</button></td>' : '') + '</tr>';
+      '<td><button class="small" data-rank-detail="' + r.id + '">상세</button></td>' +
+      (opts.deletable ? (r.seed ? '<td class="muted">기본 기록</td>' : '<td><button class="small del" data-rank-del="' + r.id + '">삭제</button></td>') : '') + '</tr>';
   });
   box.innerHTML = html + '</table>';
 }

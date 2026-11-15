@@ -485,6 +485,12 @@ function computeScore(state, reason) {
   };
 }
 
+// 오늘 날짜 (이 컴퓨터의 시간대 기준, YYYY-MM-DD). toISOString은 세계 표준시라 한국에서는 오전에 하루 전 날짜가 찍힘
+function localDateString() {
+  const d = new Date(); const p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
 // 게임 결과 요약
 function gameSummary(reason) {
   const h = state.history;
@@ -497,7 +503,7 @@ function gameSummary(reason) {
     months: h.length, years: yearsElapsed(state),
     avgHappy, money, score: sc.total, scoreParts: sc.parts, scoreDetail: sc.detail, termFactor: sc.termFactor,
     co2Total: h.reduce((s, x) => s + x.co2, 0), blackoutTotal: h.reduce((s, x) => s + x.blackoutHours, 0),
-    endYear: state.year, endMonth: state.month, date: new Date().toISOString().slice(0, 10),
+    endYear: state.year, endMonth: state.month, date: localDateString(),
   };
 }
 
@@ -520,7 +526,14 @@ const RANK_KEY = 'ilpp-rankings-v2';   // v2: 점수 계산 방식이 바뀌어 
 function loadRankings() {
   try { return JSON.parse(localStorage.getItem(RANK_KEY) || '[]'); } catch (e) { return []; }
 }
-function saveRankings(list) { localStorage.setItem(RANK_KEY, JSON.stringify(list)); }
+function saveRankings(list) {
+  try { localStorage.setItem(RANK_KEY, JSON.stringify(list)); }
+  catch (err) {
+    // 저장 공간이 모자라면 오래된 기록의 지도 정보부터 덜어 내고 다시 저장 (점수·숫자는 남김)
+    const slim = list.map((r, i) => (i < list.length - 10 && r.snap ? Object.assign({}, r, { snap: undefined }) : r));
+    try { localStorage.setItem(RANK_KEY, JSON.stringify(slim)); } catch (err2) { /* 그래도 안 되면 포기 */ }
+  }
+}
 // 랭킹 종류: 지금은 종합 점수 하나 (나중에 다른 기준을 추가할 수 있게 배열로 둠)
 const RANK_TABS = [
   { key: 'score', label: '🏆 종합 점수', desc: '국정 운영 점수(행복·전력 시스템·탄소·경제 규모·자본, 1,000점 만점)가 높은 순' },
@@ -539,6 +552,8 @@ function rankSorted(list, key) {
 function addRanking(summary, name) {
   const list = loadRankings();
   const entry = Object.assign({}, summary, { id: Date.now() + '-' + Math.floor(Math.random() * 1e6), name: (name || summary.name || '무명').slice(0, 12) });
+  // 엔딩 때의 지도와 설비를 함께 저장해 랭킹 상세 보기에서 볼 수 있게 함
+  try { if (state && state.grid && typeof makeRankSnapshot === 'function') entry.snap = makeRankSnapshot(state); } catch (err) { /* 지도 없이 숫자만 저장 */ }
   list.push(entry);
   saveRankings(list.slice(-100));
   return entry.id;
