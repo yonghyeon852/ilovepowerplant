@@ -4,7 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>I love power plant</title>
-  <link rel="stylesheet" href="style.css?v=20261116081026">
+  <meta name="description" content="대통령이 되어 20년 동안 나라의 전력망을 설계하고 운영하는 발전소 경영 게임">
+  <!-- 링크를 공유할 때 보이는 미리보기(썸네일) -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="I love power plant">
+  <meta property="og:description" content="대통령이 되어 20년 동안 나라의 전력망을 설계하고 운영하는 발전소 경영 게임">
+  <meta property="og:url" content="https://yonghyeon852.github.io/ilovepowerplant/">
+  <meta property="og:image" content="https://yonghyeon852.github.io/ilovepowerplant/assets/title-screen/title-screen-v1.jpg">
+  <meta property="og:image:width" content="1672">
+  <meta property="og:image:height" content="941">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="style.css?v=20261116083717">
 </head>
 <body>
 
@@ -226,6 +236,14 @@
   </div>
 
   <!-- ===== 시작 화면 ===== -->
+  <!-- 타이틀 화면: 접속하자마자 먼저 보이고, 아무 키나 누르거나 클릭하면 아래 시작 화면으로 넘어감. 그림을 못 불러오면 나타나지 않음 -->
+  <div id="title-screen" class="loading">
+    <div class="title-frame">
+      <img id="title-img" alt="I love power plant" data-src="assets/title-screen/title-screen-v1.jpg?v=20261116083717">
+      <div class="title-press">아무 키나 눌러 시작</div>
+    </div>
+  </div>
+
   <div id="start" class="overlay">
     <div class="modal">
       <h1 class="big">I love power plant</h1>
@@ -331,16 +349,16 @@
     </div>
   </div>
 
-  <script src="map.js?v=20261116081026"></script>
-  <script src="plants.js?v=20261116081026"></script>
-  <script src="tech.js?v=20261116081026"></script>
-  <script src="events.js?v=20261116081026"></script>
-  <script src="events2.js?v=20261116081026"></script>
-  <script src="tutorial.js?v=20261116081026"></script>
-  <script src="sim.js?v=20261116081026"></script>
-  <script src="ui.js?v=20261116081026"></script>
-  <script src="rankings_seed.js?v=20261116081026"></script>
-  <script src="rankdetail.js?v=20261116081026"></script>
-  <script src="main.js?v=20261116081026"></script>
+  <script src="map.js?v=20261116083717"></script>
+  <script src="plants.js?v=20261116083717"></script>
+  <script src="tech.js?v=20261116083717"></script>
+  <script src="events.js?v=20261116083717"></script>
+  <script src="events2.js?v=20261116083717"></script>
+  <script src="tutorial.js?v=20261116083717"></script>
+  <script src="sim.js?v=20261116083717"></script>
+  <script src="ui.js?v=20261116083717"></script>
+  <script src="rankings_seed.js?v=20261116083717"></script>
+  <script src="rankdetail.js?v=20261116083717"></script>
+  <script src="main.js?v=20261116083717"></script>
 </body>
 </html>

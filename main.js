@@ -1352,6 +1352,39 @@ function drawStartPreview() {
   drawStartPreview();
 })();
 
+// ------------------------------------------------------------
+// 타이틀 화면: 접속하자마자 그림(assets/title-screen)을 먼저 보여 주고, 아무 키나 누르거나 클릭하면 시작 화면으로 넘어감
+//  그림을 못 불러오면 타이틀 화면 없이 바로 시작 화면이 나옴
+// ------------------------------------------------------------
+(function titleScreen() {
+  const box = document.getElementById('title-screen');
+  const img = document.getElementById('title-img');
+  if (!box || !img) return;
+  let open = true;
+  const close = () => {
+    if (!open) return;
+    open = false;
+    document.removeEventListener('keydown', onKey, true);
+    box.classList.add('leaving');
+    setTimeout(() => box.classList.add('hidden'), 380);
+  };
+  // 새로고침(F5)·개발자 도구(F12)·Ctrl 조합 같은 브라우저 조작 키는 그대로 두고, 나머지 키는 "시작"으로 받음
+  const onKey = (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab', 'F5', 'F11', 'F12'].includes(e.key)) return;
+    e.preventDefault(); e.stopPropagation();
+    close();
+  };
+  document.addEventListener('keydown', onKey, true);
+  box.addEventListener('pointerdown', (e) => { e.preventDefault(); close(); });
+  img.addEventListener('load', () => {
+    box.style.setProperty('--title-bg', 'url("' + img.src + '")');   // 그림 주변 여백은 같은 그림을 흐리게 깔아 채움
+    box.classList.remove('loading');
+  });
+  img.addEventListener('error', () => { open = false; document.removeEventListener('keydown', onKey, true); box.classList.add('hidden'); });
+  img.src = img.dataset.src;
+})();
+
 // 부도 한도 (억): 기본 ECON.bankruptAt, 최근 12개월 수입 합의 절반이 더 크면 그만큼
 function bankruptLimit(state) {
   const h = (state.history || []).slice(-12);
