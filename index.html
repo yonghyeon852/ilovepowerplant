@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <title>I love power plant</title>
   <meta name="description" content="대통령이 되어 20년 동안 나라의 전력망을 설계하고 운영하는 발전소 경영 게임">
   <!-- 링크를 공유할 때 보이는 미리보기(썸네일) -->
@@ -16,7 +16,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="style.css?v=s11220036p">
+  <link rel="stylesheet" href="style.css?v=s11220133t">
 </head>
 <body>
 
@@ -157,6 +157,7 @@
             <span class="stat-lines"><small>조절 전원</small><span id="supply-value">0</span></span>
           </div>
         </div>
+        <div id="mzoom" class="mzoom"><button data-z="in" aria-label="확대">＋</button><button data-z="out" aria-label="축소">－</button><button data-z="fit" aria-label="지도 전체 보기">⤢</button></div>
         <div id="zoom-hint" class="zoom-hint hidden">마우스 휠로 확대 · 확대한 뒤 끌어서 이동</div>
       </div>
 
@@ -217,6 +218,21 @@
         </div>
       </div>
     </aside>
+
+    <!-- 모바일 전용: 아래 탭 줄 · 설비 놓을 자리 확정 줄 (mobile.js) -->
+    <nav id="mnav" aria-label="화면 고르기">
+      <button data-msec="build"><i>🏗</i><span>건설</span></button>
+      <button data-msec="research"><i>🔬</i><span>연구</span></button>
+      <button data-msec="chart"><i>📈</i><span>전망</span></button>
+      <button data-msec="policy"><i>📜</i><span>정책</span><em id="mnav-badge" class="badge hidden"></em></button>
+      <button data-msec="fleet"><i>🏭</i><span>설비</span></button>
+      <button data-msec="news"><i>📰</i><span>소식</span></button>
+    </nav>
+    <div id="mplace">
+      <div class="mp-text"><b class="mp-name"></b><span class="mp-info"></span><small>지도를 눌러 자리를 옮기세요 · 두 손가락으로 지도 이동·확대</small></div>
+      <button id="mplace-cancel" class="ghost">취소</button>
+      <button id="mplace-ok" class="primary">여기에 짓기</button>
+    </div>
   </main>
 
   <!-- ===== 월간 결산 ===== -->
@@ -349,20 +365,21 @@
     </div>
   </div>
 
-  <script src="map.js?v=s11220036p"></script>
-  <script src="atlas.js?v=s11220036p"></script>
-  <script src="facilities.js?v=s11220036p"></script>
-  <script src="plants.js?v=s11220036p"></script>
-  <script src="tech.js?v=s11220036p"></script>
-  <script src="events.js?v=s11220036p"></script>
-  <script src="events2.js?v=s11220036p"></script>
-  <script src="events3.js?v=s11220036p"></script>
-  <script src="events4.js?v=s11220036p"></script>
-  <script src="tutorial.js?v=s11220036p"></script>
-  <script src="sim.js?v=s11220036p"></script>
-  <script src="ui.js?v=s11220036p"></script>
-  <script src="rankings_seed.js?v=s11220036p"></script>
-  <script src="rankdetail.js?v=s11220036p"></script>
-  <script src="main.js?v=s11220036p"></script>
+  <script src="map.js?v=s11220133t"></script>
+  <script src="atlas.js?v=s11220133t"></script>
+  <script src="facilities.js?v=s11220133t"></script>
+  <script src="plants.js?v=s11220133t"></script>
+  <script src="tech.js?v=s11220133t"></script>
+  <script src="events.js?v=s11220133t"></script>
+  <script src="events2.js?v=s11220133t"></script>
+  <script src="events3.js?v=s11220133t"></script>
+  <script src="events4.js?v=s11220133t"></script>
+  <script src="tutorial.js?v=s11220133t"></script>
+  <script src="sim.js?v=s11220133t"></script>
+  <script src="ui.js?v=s11220133t"></script>
+  <script src="rankings_seed.js?v=s11220133t"></script>
+  <script src="rankdetail.js?v=s11220133t"></script>
+  <script src="main.js?v=s11220133t"></script>
+  <script src="mobile.js?v=s11220133t"></script>
 </body>
 </html>

@@ -218,6 +218,7 @@ function runMonth() {
   if (state.finished) return;
   if (state.cityDraft) { showMessage('도시 조성을 확정하거나 취소한 뒤 진행하세요'); return; }
   if (state.pendingDecision) { renderDecision(state); showMessage('사건에 먼저 답해야 달을 진행할 수 있습니다'); return; }
+  if (state.reportPending && state.lastReport) { renderReport(state.lastReport); document.getElementById('report').classList.remove('hidden'); return; }   // 이미 정산한 달: 결산 창을 다시 보여 줌
   const report = simulateMonth(state);
   state.exportTotal = (state.exportTotal || 0) + (report.energy.exp || 0);
   state.money += report.money.profit;
@@ -295,11 +296,13 @@ function runMonth() {
 
   renderReport(report);
   document.getElementById('report').classList.remove('hidden');
+  state.reportPending = true;   // 결산은 끝났고 창을 아직 닫지 않음 (이 상태로 저장되면 이어하기 때 결산 창부터 다시 보여 줌)
   saveGame();
 }
 
 function advanceMonth() {
   document.getElementById('report').classList.add('hidden');
+  state.reportPending = false;
   const notices = [];
 
   // 건설·업그레이드·철거 진행, 수명
@@ -796,6 +799,24 @@ function addBuilding(type, col, row, instant) {
   return b;
 }
 
+// 놓을 자리에 대한 한 줄 안내 (비용 · 공사 기간 · 반발 · 보너스 · 송전 손실 · 민심). d = { type, col, row }
+function placeLabel(d, info) {
+  const p = PLANTS[d.type];
+  let label, color = '#fff';
+  if (info.ok) {
+    label = fmt(info.cost) + '억 · ' + info.months + '개월';
+    if (info.opposed) { label += ' · 주민 반발'; color = '#ffb300'; }
+    if (info.coastal) label += ' · 해안 보너스';
+    if (info.mountain) label += d.type === 'wind' ? ' · 산지 보너스' : ' · 산지(민심 −)';
+    else if (d.type === 'wind' && !info.coastal) label += ' · 평지 −' + Math.round(ECON.windPlainPenalty * 100) + '%';
+    if (!p.isStorage && !p.isLink) label += ' · 송전 손실 ' + fmt(100 * plantLoss(state, d), 1) + '%';
+    const n = nuisanceOf(state, { type: d.type, col: d.col, row: d.row });
+    if (n > 0) { label += ' · 민심 −' + fmt(n * ECON.moodNuisanceMult, 1); color = '#ffb300'; }
+    if (state.money < info.cost) { label += ' · 자금 부족'; color = '#f44336'; }
+  } else { label = info.reason; color = '#f44336'; }
+  return { label, color };
+}
+
 function tryBuild(type, col, row) {
   const info = canBuild(type, col, row);
   const p = PLANTS[type];
@@ -1026,19 +1047,15 @@ function render() {
     ctx.strokeStyle = affordable ? '#adffce' : '#ff847a';
     ctx.lineWidth = 3;
     ctx.strokeRect(drag.col * TILE + 1, drag.row * TILE + 1, p.width * TILE - 2, p.height * TILE - 2);
+    if (drag.tap) {   // 모바일: 작은 화면에서도 놓을 자리가 눈에 띄게 바깥에 흰 점선 테두리를 한 겹 더 (굵기는 화면 기준)
+      const u = 1 / z;
+      ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.lineWidth = 2 * u; ctx.setLineDash([5 * u, 4 * u]);
+      ctx.strokeRect(drag.col * TILE - 5 * u, drag.row * TILE - 5 * u, p.width * TILE + 10 * u, p.height * TILE + 10 * u);
+      ctx.setLineDash([]);
+    }
 
-    let label, color = '#fff';
-    if (info.ok) {
-      label = fmt(info.cost) + '억 · ' + info.months + '개월';
-      if (info.opposed) { label += ' · 주민 반발'; color = '#ffb300'; }
-      if (info.coastal) label += ' · 해안 보너스';
-      if (info.mountain) label += drag.type === 'wind' ? ' · 산지 보너스' : ' · 산지(민심 −)';
-      else if (drag.type === 'wind' && !info.coastal) label += ' · 평지 −' + Math.round(ECON.windPlainPenalty * 100) + '%';
-      if (!p.isStorage && !p.isLink) label += ' · 송전 손실 ' + fmt(100*plantLoss(state,drag),1) + '%';
-      const n = nuisanceOf(state, { type: drag.type, col: drag.col, row: drag.row });
-      if (n > 0) { label += ' · 민심 −' + fmt(n * ECON.moodNuisanceMult, 1); color = '#ffb300'; }
-      if (state.money < info.cost) { label += ' · 자금 부족'; color = '#f44336'; }
-    } else { label = info.reason; color = '#f44336'; }
+    const { label, color } = placeLabel(drag, info);
+    if (!drag.tap) {   // 모바일(눌러서 자리 잡기)에서는 같은 글이 아래 확정 줄에 나오므로 지도 위에는 그리지 않음
     // Screen-space label stays readable at the full-country zoom.
     const px=((drag.col+p.width/2)-view.col)*TILE*z, py=(drag.row-view.row)*TILE*z;
     ctx.save();ctx.setTransform(1,0,0,1,0,0);
@@ -1055,6 +1072,7 @@ function render() {
     const top=clamp(py>=height+6?py-height-5:py+p.height*TILE*z+5,3,canvas.height-height-3);
     ctx.fillStyle='#162626';ctx.fillRect(left,top,width,height);
     ctx.fillStyle=color;rows.forEach((line,i)=>ctx.fillText(line,left+width/2,top+11+i*16));ctx.restore();
+    }
   }
   ctx.restore();
 
@@ -1195,6 +1213,12 @@ canvas.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 canvas.addEventListener('pointerdown', (e) => {
+  // 모바일: 카드를 눌러 고른 뒤에는 지도를 누른 곳으로 놓을 자리가 옮겨 감 (확정은 아래의 "여기에 짓기" — mobile.js)
+  if (drag && drag.tap) {
+    const cellT = pointToCell(e.clientX, e.clientY - (e.pointerType === 'touch' ? 44 : 0), drag.type);   // 손가락에 가리지 않게 조금 위
+    if (cellT.col !== null) { drag.col = cellT.col; drag.row = cellT.row; render(); if (typeof mobilePlaceUpdate === 'function') mobilePlaceUpdate(); }
+    return;
+  }
   if (e.button === 2 || e.button === 1) {                     // 오른쪽/가운데 버튼: 지도 이동
     panStart = { x: e.clientX, y: e.clientY, col: state.view.col, row: state.view.row };
     e.preventDefault();
@@ -1253,6 +1277,12 @@ document.addEventListener('pointermove', (e) => {
     return;
   }
   if (drag) {
+    if (drag.tap) {   // 모바일: 지도를 누른 채 움직일 때만 자리가 따라옴
+      if (e.target !== canvas || !(e.buttons || e.pointerType === 'touch')) return;
+      const cellT = pointToCell(e.clientX, e.clientY - (e.pointerType === 'touch' ? 44 : 0), drag.type);
+      if (cellT.col !== null && (cellT.col !== drag.col || cellT.row !== drag.row)) { drag.col = cellT.col; drag.row = cellT.row; render(); if (typeof mobilePlaceUpdate === 'function') mobilePlaceUpdate(); }
+      return;
+    }
     const cell = pointToCell(e.clientX, e.clientY, drag.type);
     drag.col = cell.col; drag.row = cell.row;
     render();
@@ -1290,6 +1320,7 @@ document.addEventListener('pointerup', (e) => {
   if (draftPaint) { draftPaint = null; return; }
 
   if (drag) {
+    if (drag.tap) { pressPos = null; return; }   // 모바일: 손을 떼도 짓지 않음 (자리만 잡고, 확정 버튼으로 지음)
     const cell = pointToCell(e.clientX, e.clientY, drag.type);
     const type = drag.type;
     drag = null;
@@ -1434,7 +1465,7 @@ document.addEventListener('keydown', (e) => {
   if (key === '1') showTab('map');
   else if (key === '2' || key === '3') showTab('tech');   // 연구 칸 열기
   else if (key === 'Escape') {
-    if (drag) { drag = null; document.querySelectorAll('.plant-card').forEach((c) => c.classList.remove('dragging')); document.body.style.cursor = ''; }
+    if (drag) { drag = null; document.body.classList.remove('mplacing'); document.querySelectorAll('.plant-card').forEach((c) => c.classList.remove('dragging')); document.body.style.cursor = ''; }
     state.selectedId = null;
     render(); renderSelected(state);
   } else if (currentTab === 'map') {
@@ -1476,7 +1507,11 @@ document.querySelectorAll('#start .mode').forEach((btn) => {
   btn.addEventListener('click', () => { document.getElementById('start').classList.add('hidden'); showTab('map'); newGame(btn.dataset.mode); });
 });
 document.getElementById('continue-game').addEventListener('click', () => {
-  if (loadGame()) { document.getElementById('start').classList.add('hidden'); showTab('map'); renderAll(); }
+  if (loadGame()) {
+    document.getElementById('start').classList.add('hidden'); showTab('map'); renderAll();
+    // 결산 창을 닫기 전에 나갔던 판: 그 결산을 다시 띄움 (닫아야 다음 달로 넘어감 — 같은 달을 두 번 정산하지 않도록)
+    if (state.reportPending && state.lastReport && !state.finished) { try { renderReport(state.lastReport); document.getElementById('report').classList.remove('hidden'); } catch (e) { state.reportPending = false; } }
+  }
 });
 document.getElementById('gameover-restart').addEventListener('click', () => {
   document.getElementById('gameover').classList.add('hidden');

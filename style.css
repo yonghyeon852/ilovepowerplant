@@ -876,3 +876,178 @@ canvas#forecast-chart, canvas#report-chart { display: block; width: 100%; height
 
 /* 25. 위쪽 막대: "국정운영 점수"로 이름표가 길어져서, 창이 좁을 때는 대통령 이름 칸을 먼저 숨겨 한 줄을 지킴 */
 @media (max-width: 1100px) { #topbar .stat.player { display: none; } .left-stats { gap: 4px 12px; } }
+
+/* 26. 모바일 화면 (body.mobile — mobile.js가 좁은 화면에서 붙임). 위 = 숫자와 진행, 가운데 = 지도, 아래 = 탭으로 고르는 칸 하나 */
+#mnav, #mplace, #mzoom { display: none; }
+body.mobile { font-size: 13px; touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+html.mobile-root { overscroll-behavior: none; }
+/* 아이폰 사파리: 단추가 아닌 곳을 눌러도 "바깥을 눌러 닫기"가 되게 함 · 글자 입력 칸은 16px 이상이어야 누를 때 화면이 확대되지 않음 · 길게 눌러도 선택/메뉴가 뜨지 않게 */
+@media (pointer: coarse) { body.mobile { cursor: pointer; } }
+body.mobile input, body.mobile select, body.mobile textarea { font-size: 16px; }
+body.mobile canvas#map, body.mobile .plant-card, body.mobile #mnav, body.mobile #mzoom, body.mobile #topbar, body.mobile #mplace { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* 위쪽 막대: 두 줄 (숫자 / 날짜와 버튼) */
+body.mobile #topbar { padding: 5px 8px 6px; gap: 5px 8px; flex-wrap: wrap; }
+body.mobile #topbar .tb-left { flex: 1 1 100%; gap: 0; }
+body.mobile #topbar .stat.player, body.mobile #topbar .stat.rd { display: none; }
+body.mobile .left-stats { width: 100%; flex-wrap: nowrap; justify-content: space-between; gap: 4px 8px; }
+body.mobile #topbar .stat .lbl { display: block; font-size: 0.62rem; }
+body.mobile #topbar .stat .val { font-size: 0.95rem; }
+body.mobile #topbar .stat.money .val, body.mobile #topbar .stat.happy .val { font-size: 1.08rem; }
+body.mobile #topbar .stat .unit { font-size: 0.66rem; }
+body.mobile .date-box { flex: 1 1 100%; justify-content: flex-start; gap: 6px; }
+body.mobile .date-box > :first-child { margin-right: auto; }
+body.mobile #next-month { padding: 8px 14px; }
+body.mobile #next-month small, body.mobile #report-close small { display: none; }
+body.mobile #auto-month { padding: 8px 10px; }
+body.mobile #menu summary { padding: 8px 10px; }
+body.mobile #menu .menu-list button { padding: 10px 12px; }
+/* 본문: 지도가 남는 높이를 다 쓰고, 그 아래에 칸 하나 + 탭 줄 */
+body.mobile #tab-map { display: flex; flex-direction: column; gap: 6px; padding: 6px 6px 0; overflow: hidden; }
+body.mobile #board { order: 1; flex: 1 1 0; height: auto; min-height: 110px; }
+body.mobile #map-wrap { border-radius: 10px; }
+body.mobile #left-col, body.mobile #side { order: 2; display: none; flex: 0 0 clamp(200px, 38dvh, 340px); min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; gap: 8px; }
+body.mobile[data-msec="build"] #left-col, body.mobile[data-msec="research"] #left-col { display: flex; }
+body.mobile[data-msec="chart"] #side, body.mobile[data-msec="policy"] #side, body.mobile[data-msec="fleet"] #side, body.mobile[data-msec="news"] #side { display: flex; }
+body.mobile.msheet-closed #left-col, body.mobile.msheet-closed #side, body.mobile.mplacing #left-col, body.mobile.mplacing #side { display: none; }
+body.mobile[data-msec="build"] #techrd-panel, body.mobile[data-msec="research"] #palette { display: none; }
+body.mobile #left-col > #palette { flex: 0 0 auto; min-height: 0; overflow: visible; }
+body.mobile .rd-dock { flex: 0 0 auto; max-height: none; overflow: visible; }
+body.mobile .rd-dock.closed #techrd-info { display: block; }
+body.mobile #rd-dock-toggle { display: none; }
+body.mobile #side-tabs { display: none; }
+body.mobile #side-panes { flex: 0 0 auto; min-height: 0; overflow: visible; }
+body.mobile .now-card { flex: 0 0 auto; max-height: none; overflow: visible; }
+body.mobile:not([data-msec="chart"]) #now-panel { display: none; }
+/* 아래 탭 줄 */
+body.mobile #mnav { order: 3; display: flex; flex: 0 0 auto; margin: 0 -6px; padding: 3px 4px calc(3px + env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--line-2); }
+#mnav button { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 5px 2px 4px; background: none; border: none; border-radius: 9px; color: var(--muted); font: inherit; font-size: 0.7rem; cursor: pointer; }
+#mnav button i { font-style: normal; font-size: 1.15rem; line-height: 1.1; filter: grayscale(0.6); opacity: 0.8; }
+#mnav button.active { background: var(--panel-3); color: var(--text); font-weight: 700; }
+#mnav button.active i { filter: none; opacity: 1; }
+#mnav button .badge { position: absolute; top: 2px; right: 18%; font-style: normal; }
+body.mobile.mplacing #mnav { display: none; }
+/* 설비 놓을 자리 확정 줄 */
+body.mobile.mplacing #mplace { order: 3; display: flex; flex: 0 0 auto; align-items: center; gap: 8px; margin: 0 -6px; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--accent); }
+#mplace .mp-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.35; }
+#mplace .mp-name { font-size: 0.95rem; }
+#mplace .mp-info { font-size: 0.82rem; color: var(--good); }
+#mplace .mp-info.bad { color: var(--bad); }
+#mplace .mp-info.warn { color: var(--warn, #ffb300); }
+#mplace small { color: var(--muted); font-size: 0.68rem; }
+#mplace button { flex: 0 0 auto; padding: 10px 14px; white-space: nowrap; }
+/* 지도 위: 확대 버튼을 보이고, 덜 중요한 표시는 숨김 */
+body.mobile #mzoom { position: absolute; z-index: 4; right: 6px; bottom: 6px; display: flex; flex-direction: row; gap: 5px; }
+#mzoom button { width: 36px; height: 36px; padding: 0; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(13, 16, 22, 0.82); color: var(--text); font-size: 1.15rem; line-height: 1; }
+body.mobile .map-grid-control, body.mobile .map-legend, body.mobile .hud-br, body.mobile #zoom-hint, body.mobile canvas#minimap { display: none !important; }
+body.mobile .hud-tl { top: 6px; left: 6px; max-width: 58%; }
+body.mobile .hud-tr { top: 6px; right: 6px; max-width: 40%; }
+body.mobile .hud-bl { bottom: 6px; left: 6px; max-width: calc(100% - 136px); }
+body.mobile .hud .chip { padding: 4px 8px; font-size: 0.72rem; border-radius: 8px; }
+body.mobile .hud .chip-strong .stat-lines > span { font-size: 0.86rem; }
+body.mobile #message { top: 8px; max-width: calc(100% - 16px); white-space: normal; text-align: center; }
+/* 카드와 버튼: 손가락으로 누르기 좋게, 목록은 위아래로 밀 수 있게 */
+body.mobile .plant-card { touch-action: pan-y; cursor: pointer; padding: 8px 9px; }
+body.mobile #left-col #palette-cards { gap: 8px; }
+body.mobile #left-col .pc-group-body { gap: 5px; }
+body.mobile .pc-info { min-width: 30px; min-height: 30px; }
+body.mobile .rk { grid-template-areas: 'n c b' 'e e b'; padding: 5px 6px 5px 9px; margin-bottom: 4px; font-size: 0.74rem; }
+body.mobile .rk .e { display: block; }
+body.mobile .rk > button { padding: 9px 14px; }
+body.mobile .rk .n { font-size: 0.86rem; }
+body.mobile .rk-lab .lab-btns button { padding: 8px 2px; font-size: 0.8rem; }
+body.mobile button.small { padding: 7px 10px; }
+/* 설비 상세(ⓘ): 화면 아래에 넓게 */
+body.mobile #plant-detail { left: 6px !important; right: 6px; top: auto !important; bottom: 6px; width: auto; max-width: none; max-height: 72dvh; z-index: 60; }
+/* 창(결산 · 사건 · 엔딩 등): 화면을 넓게 쓰고 안에서 스크롤 */
+body.mobile .overlay { padding: 6px; align-items: center; }
+body.mobile .modal { width: 100%; max-height: 96dvh; padding: 14px 12px; border-radius: 14px; }
+body.mobile .modal.wide { width: 100%; }
+body.mobile .modal h2 { font-size: 0.95rem; }
+body.mobile .report-head { gap: 6px; margin: 8px 0 6px; }
+body.mobile .rh-card { padding: 7px 9px; }
+body.mobile .rh-card .v { font-size: 1.05rem; }
+body.mobile #report-events { font-size: 0.76rem; }
+body.mobile .legend-row { gap: 3px 9px; font-size: 0.68rem; }
+body.mobile .choice-list .choice { padding: 11px 12px; }
+body.mobile .modal.cards { padding: 16px 10px 14px; }
+body.mobile .modal.cards h2 { font-size: 1.15rem; }
+body.mobile .modal.cards .choice-list { flex-direction: column; flex-wrap: nowrap; gap: 9px; }
+body.mobile .t2card { flex: 0 0 auto; max-width: none; width: 100%; min-height: 0; padding: 12px 12px 10px; gap: 5px; }
+body.mobile .t2card .t2-ico { width: 48px; height: 48px; font-size: 1.6rem; margin-bottom: 0; }
+body.mobile .t2card .t2-goal { font-size: 1.2rem; }
+body.mobile .t2-step { flex-wrap: wrap; justify-content: center; }
+body.mobile .modal-actions button { padding: 11px 18px; }
+body.mobile table { font-size: 0.74rem; }
+body.mobile #rankings .modal, body.mobile #rank-detail .modal { overflow-x: auto; }
+/* 안내(튜토리얼) 창: 폭을 다 쓰고, 설명하는 곳을 가리지 않게 위(m-top)나 아래에 붙음. 머리를 누르면 접힘(m-min) */
+body.mobile #tutorial-guide { left: 6px !important; right: 6px; top: var(--mt-top, auto) !important; bottom: var(--mt-bottom, 64px) !important; width: auto; max-width: none; max-height: var(--mt-max, 62dvh); padding: 10px 12px; display: flex; flex-direction: column; }
+body.mobile #tutorial-guide > * { flex: 0 0 auto; }
+/* 설비 놓을 자리를 잡는 동안에는 한 줄 안내만 남겨 지도를 가리지 않음 */
+body.mobile.mplacing #tutorial-guide { top: var(--mtop, 92px) !important; bottom: auto !important; padding: 6px 10px; }
+body.mobile.mplacing #tutorial-guide :is(.tut-head, .tut-title, .tut-body, .tut-actions) { display: none; }
+body.mobile.mplacing #tutorial-guide .tut-wait { margin-top: 0; font-size: 0.8rem; }
+body.mobile #tutorial-guide .tut-body { flex: 1 1 auto; min-height: 56px; max-height: none; font-size: 0.86rem; }
+body.mobile #tutorial-guide .tut-avatar { font-size: 1.4rem; }
+body.mobile #tutorial-guide .tut-title { font-size: 0.98rem; margin: 2px 0 6px; }
+body.mobile #tutorial-guide .tut-head { cursor: pointer; margin-bottom: 2px; }
+body.mobile #tutorial-guide .tut-grip { display: none; }
+body.mobile #tutorial-guide .tut-head::after { content: '접기 ▾'; margin-left: auto; color: var(--muted); font-size: 0.72rem; }
+body.mobile #tutorial-guide.m-min .tut-head::after { content: '펴기 ▴'; }
+body.mobile #tutorial-guide.m-min .tut-body, body.mobile #tutorial-guide.m-min .tut-actions { display: none; }
+body.mobile #tutorial-guide .tut-wait { margin-top: 6px; padding: 6px 9px; font-size: 0.8rem; line-height: 1.45; }
+body.mobile #tutorial-guide.m-min .tut-wait { margin-top: 3px; }
+body.mobile #tutorial-guide .tut-actions { margin-top: 8px; flex-wrap: wrap; }
+.tut-try { display: none; }
+body.mobile #tutorial-guide .tut-try { display: inline-block; }
+body.mobile #tutorial-guide .tut-actions button { padding: 8px 11px; font-size: 0.84rem; }
+body.mobile #tutorial-guide.over-decision .tut-wait { display: block; }
+body.mobile #tutorial-guide.over-decision .tut-body { max-height: none; }
+body.mobile #decision.tut-side { align-items: center; justify-content: center; padding-right: 6px; }
+body.mobile:has(#tutorial-guide.over-modal:not(.hidden):not(.m-min)) :is(#report, #decision) { align-items: flex-start; }
+body.mobile:has(#tutorial-guide.over-modal:not(.hidden):not(.m-min)) :is(#report, #decision) .modal { max-height: 46dvh; }
+/* 가로로 눕힌 휴대폰: 왼쪽에 지도, 오른쪽에 칸과 탭 줄 */
+@media (orientation: landscape) and (max-height: 540px) {
+  body.mobile #topbar { flex-wrap: nowrap; padding: 3px 8px; }
+  body.mobile #topbar .tb-left { flex: 1 1 auto; }
+  body.mobile #topbar .stat .lbl { display: none; }
+  body.mobile .left-stats { width: auto; justify-content: flex-start; gap: 4px 14px; }
+  body.mobile .date-box { flex: 0 0 auto; }
+  body.mobile #tab-map { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 46%); grid-template-rows: minmax(0, 1fr) auto; padding: 4px 4px 0; gap: 4px; }
+  body.mobile #board { grid-column: 1; grid-row: 1 / 3; min-height: 0; margin-bottom: 4px; }
+  body.mobile #left-col, body.mobile #side { grid-column: 2; grid-row: 1; flex: none; height: auto; }
+  body.mobile #mnav, body.mobile.mplacing #mplace { grid-column: 2; grid-row: 2; margin: 0; border-radius: 10px 10px 0 0; }
+  body.mobile.msheet-closed #tab-map, body.mobile.mplacing #tab-map { grid-template-columns: minmax(0, 1fr) auto; }
+  body.mobile.msheet-closed #mnav { grid-row: 1 / 3; flex-direction: column; justify-content: space-around; margin-bottom: 4px; border-radius: 10px; border: 1px solid var(--line-2); }
+  body.mobile.mplacing #mplace { grid-row: 1 / 3; flex-direction: column; align-items: stretch; width: 210px; margin: 0 0 4px; padding: 10px; border: 1px solid var(--accent); border-radius: 10px; }
+  body.mobile.mplacing #mplace .mp-text { flex: 0 0 auto; margin-bottom: auto; }
+}
+/* 재선 공약 ① 분야 카드: 휴대폰에서는 두 줄로 나란히 (여섯 장이 한 화면에), ② 수위 카드는 한 줄에 하나 */
+body.mobile .modal.cards .choice-list { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+body.mobile .modal.cards .choice-list > * { grid-column: 1 / -1; }
+body.mobile .modal.cards .choice-list > .t2card[data-theme] { grid-column: auto; padding: 10px 8px 8px; }
+body.mobile .t2card[data-theme] .t2-ico { width: 38px; height: 38px; font-size: 1.25rem; }
+body.mobile .t2card[data-theme] strong { font-size: 0.95rem; }
+body.mobile .t2card[data-theme] .t2-desc { font-size: 0.7rem; line-height: 1.35; }
+body.mobile .t2card[data-theme] .t2-goal { font-size: 0.92rem; }
+body.mobile.mplacing #tutorial-guide:has(.tut-wait.hidden) { display: none; }
+/* 안내 창을 접어 둔 채 결산 · 사건 창이 떠 있을 때: 접힌 창(머리 한 줄)이 창의 아래 버튼을 가리지 않게 */
+body.mobile #tutorial-guide.m-min .tut-title { display: none; }
+body.mobile #tutorial-guide.m-min { padding: 7px 12px; }
+body.mobile:has(#tutorial-guide.over-modal.m-min:not(.hidden)) :is(#report, #decision) { align-items: flex-start; }
+body.mobile:has(#tutorial-guide.over-modal.m-min:not(.hidden)) :is(#report, #decision) .modal { max-height: calc(100dvh - 146px); }
+body.mobile:has(#tutorial-guide.over-modal.m-min:not(.hidden) .tut-wait.hidden) :is(#report, #decision) .modal { max-height: calc(100dvh - 82px); }
+/* 랭킹 표: 휴대폰에서는 꼭 볼 칸만 (모드 · 재임 · 최종 자금 · 날짜는 상세 보기에 있음) */
+body.mobile table.rank-table:not(.rd-fleet) :is(th, td):is(:nth-child(3), :nth-child(6), :nth-child(8), :nth-child(9)) { display: none; }
+body.mobile table.rank-table :is(th, td) { padding-left: 5px; padding-right: 5px; }
+/* 가로로 눕힌 휴대폰의 안내 창: 대상이 오른쪽 칸에 있으면 왼쪽(지도 위), 아니면 오른쪽에 세로로 길게. 결산 · 사건 창이 뜨면 창은 왼쪽 · 안내는 오른쪽 */
+@media (orientation: landscape) and (max-height: 540px) {
+  body.mobile #tutorial-guide { left: auto !important; right: 6px; width: 46%; top: var(--mtop, 50px) !important; bottom: auto !important; max-height: calc(100dvh - var(--mtop, 50px) - 6px); }
+  body.mobile #tutorial-guide.m-top { left: 6px !important; right: auto; width: 50%; top: 4px !important; max-height: calc(100dvh - 10px); }
+  body.mobile #tutorial-guide.over-modal { left: auto !important; right: 6px; width: 46%; top: 4px !important; max-height: calc(100dvh - 10px); }
+  body.mobile:has(#tutorial-guide.over-modal:not(.hidden)) :is(#report, #decision) { justify-content: flex-start; align-items: center; }
+  body.mobile:has(#tutorial-guide.over-modal:not(.hidden):not(.m-min)) :is(#report, #decision) .modal,
+  body.mobile:has(#tutorial-guide.over-modal.m-min:not(.hidden)) :is(#report, #decision) .modal,
+  body.mobile:has(#tutorial-guide.over-modal.m-min:not(.hidden) .tut-wait.hidden) :is(#report, #decision) .modal { width: 52%; max-height: calc(100dvh - 12px); }
+}
+/* 결산 창의 "다음 달로": 휴대폰에서는 내용을 내리지 않아도 누를 수 있게 창 아래에 붙여 둠 */
+body.mobile #report .modal-actions { position: sticky; bottom: -14px; margin: 10px -12px -14px; padding: 8px 12px 12px; background: linear-gradient(to bottom, transparent, var(--panel) 30%); }
