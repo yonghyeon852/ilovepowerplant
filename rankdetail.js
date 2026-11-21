@@ -11,8 +11,8 @@ function allRankings() {
   return seed.concat(loadRankings());
 }
 
-const RANK_TERRAIN = { land: 'l', river: 'r', sea: 's', mountain: 'm' };
-const RANK_TERRAIN_BACK = { l: LAND, r: RIVER, s: SEA, m: MOUNTAIN };
+const RANK_TERRAIN = { land: 'l', river: 'r', sea: 's', mountain: 'm', foreign: 'f', offshore: 'o' };
+const RANK_TERRAIN_BACK = { l: LAND, r: RIVER, s: SEA, m: MOUNTAIN, f: FOREIGN, o: OFFSHORE };
 
 // 지형을 "글자 + 이어진 칸 수"로 줄여 적음 (예: s8l92…)
 function rankEncodeGrid(grid) {
@@ -24,12 +24,12 @@ function rankEncodeGrid(grid) {
   }
   return out + prev + n;
 }
-function rankDecodeGrid(str) {
+function rankDecodeGrid(str, width = 100, height = 72) {
   const flat = [];
-  const re = /([lrsm])(\d+)/g; let m;
+  const re = /([lrsmfo])(\d+)/g; let m;
   while ((m = re.exec(str || ''))) { const t = RANK_TERRAIN_BACK[m[1]]; for (let i = 0; i < +m[2]; i++) flat.push(t); }
   const grid = [];
-  for (let r = 0; r < ROWS; r++) { const row = []; for (let c = 0; c < COLS; c++) row.push(flat[r * COLS + c] || LAND); grid.push(row); }
+  for (let r = 0; r < height; r++) { const row = []; for (let c = 0; c < width; c++) row.push(flat[r * width + c] || LAND); grid.push(row); }
   return grid;
 }
 
@@ -54,8 +54,9 @@ function makeRankSnapshot(state) {
     if (def && opt) pol[def.name] = opt.label;
   }
   return {
-    v: 1,
+    v: 2, width: COLS, height: ROWS,
     g: rankEncodeGrid(state.grid),
+    co2Tonnes: state.lastReport?.energy?.co2 ?? null,
     c: state.cities.map((ct) => ({ n: ct.name, p: Math.round(ct.pop), t: ct.tiles.map((t) => (t.row * COLS + t.col).toString(36)).join(',') })),
     b: state.buildings.filter((b) => b.status !== 'demolishing').map((b) => [PALETTE_ORDER.indexOf(b.type), b.col, b.row, b.status === 'online' ? 0 : b.status === 'building' ? 1 : b.status === 'retired' ? 2 : 3]),
     fleet,
@@ -63,7 +64,7 @@ function makeRankSnapshot(state) {
     peak: Math.round(Math.max.apply(null, state.demandCurve || [0])),
     happy: Math.round(state.happiness),
     rd: rdLevel(state),
-    tech: TECH_ORDER.map((k) => state.tech[k] || 0),
+    tech: TECH_ORDER.map((k) => state.tech[k] || 0), techKeys: TECH_ORDER.slice(),   // 테크트리 구성이 바뀌어도 기록을 읽을 수 있게 이름을 함께 저장
     pol,
     gen: gen ? { nuclear: Math.round(gen.nuclear), coal: Math.round(gen.coal), ccgt: Math.round(gen.ccgt), gt: Math.round(gen.gt), solar: Math.round(gen.solar), wind: Math.round(gen.wind) } : null,
     inten: h.length && h[h.length - 1].inten !== undefined ? +h[h.length - 1].inten.toFixed(3) : null,
@@ -80,25 +81,26 @@ function drawRankMap(canvas, snap) {
   const W = canvas.width, H = canvas.height;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  const grid = rankDecodeGrid(snap.g);
+  const width = snap.width || 100, height = snap.height || 72;
+  const grid = rankDecodeGrid(snap.g, width, height);
   const cities = (snap.c || []).map((ct) => finalizeCity({
     name: ct.n, pop: ct.p,
-    tiles: String(ct.t || '').split(',').filter(Boolean).map((k) => { const i = parseInt(k, 36); return { col: i % COLS, row: Math.floor(i / COLS) }; }),
+    tiles: String(ct.t || '').split(',').filter(Boolean).map((k) => { const i = parseInt(k, 36); return { col: i % width, row: Math.floor(i / width) }; }),
   }));
-  const s = W / (COLS * TILE);
+  const s = Math.min(W / (width*TILE), H / (height*TILE));
   ctx.save();
   ctx.setTransform(s, 0, 0, s, 0, 0);
-  drawTerrain(ctx, grid, { col: 0, row: 0, cols: COLS, rows: ROWS });
-  drawCities(ctx, cities);
+  const tint = carbonTint(snap.co2Tonnes);
+  drawTerrain(ctx, grid, tint);
+  drawCities(ctx, cities, false, tint);
   // 설비: 종류별 색 사각형. 공사 중은 반투명, 수명이 끝난 설비는 붉은 테두리
   for (const b of (snap.b || [])) {
     const type = PALETTE_ORDER[b[0]]; const p = PLANTS[type]; if (!p) continue;
     const x = b[1] * TILE, y = b[2] * TILE, w = p.width * TILE, hgt = p.height * TILE;
     ctx.globalAlpha = b[3] === 1 ? 0.55 : 1;
-    ctx.fillStyle = p.color; ctx.fillRect(x + 1, y + 1, w - 2, hgt - 2);
+    drawFacility(ctx, type, x, y, w, hgt);
     ctx.globalAlpha = 1;
-    ctx.lineWidth = 3; ctx.strokeStyle = b[3] === 2 ? '#ff5252' : 'rgba(0,0,0,0.75)';
-    ctx.strokeRect(x + 1.5, y + 1.5, w - 3, hgt - 3);
+    if (b[3] === 2) { ctx.strokeStyle = '#ff847a'; ctx.strokeRect(x+1,y+1,w-2,hgt-2); }
   }
   ctx.restore();
   // 도시 이름표는 화면 크기에 맞춰 따로 그림 (지도를 줄여 그리면 글씨가 너무 작아지므로)
@@ -125,10 +127,8 @@ function showRankDetail(id) {
   const body = document.getElementById('rank-detail-body');
   const snap = r.snap || null;
   const p = r.scoreParts || {}, d = r.scoreDetail || {};
-  const W = (typeof SCORE !== 'undefined') ? SCORE.weights : { happy: 2, system: 2.5, carbon: 2, economy: 2, capital: 1.5 };
   const yrs = Math.floor(r.years || 0), mos = Math.round(((r.years || 0) - yrs) * 12);
   const card = (k, v, s) => '<div class="card"><div class="k">' + k + '</div><div class="v">' + v + '</div>' + (s ? '<div class="s">' + s + '</div>' : '') + '</div>';
-  const bar = (label, key, sub) => { const val = p[key] || 0; return '<div class="sb"><div class="l"><span>' + label + '</span><b>' + Math.round(val * W[key]) + ' / ' + W[key] * 100 + '</b></div><div class="bar"><i style="width:' + clamp(val, 0, 100) + '%"></i></div><div class="s">' + sub + '</div></div>'; };
 
   let html = '<div class="rd-head"><div><h2>' + escapeHtml(r.name) + ' 대통령</h2>' +
     '<div class="rd-sub">' + (MODE_LABEL[r.mode] || r.mode) + ' · ' + (REASON_LABEL[r.reason] || r.reason) + ' · 재임 ' + yrs + '년 ' + mos + '개월' +
@@ -140,28 +140,25 @@ function showRankDetail(id) {
   if (snap) {
     const kinds = (snap.fleet || []).map((f) => f.t);
     html += '<canvas id="rank-map" width="1100" height="792"></canvas>' +
-      '<div class="rd-legend"><span><i style="background:#8d8d8d"></i>도시</span>' + kinds.map((t) => '<span><i style="background:' + PLANTS[t].color + '"></i>' + PLANTS[t].short + '</span>').join('') +
+      '<div class="rd-legend"><span><img src="assets/world/downtown.png" alt="" width="20" height="20">도시</span>' + kinds.map((t) => '<span><img src="assets/world/' + t + '.png" alt="" width="20" height="20" style="object-fit:contain;vertical-align:middle">' + PLANTS[t].short + '</span>').join('') +
       '<span><i class="ring"></i>붉은 테두리 = 수명 종료</span></div>';
   } else html += '<p class="muted">이 기록은 지도 저장 기능이 생기기 전에 등록되어, 지도 없이 숫자만 볼 수 있습니다.</p>';
-  html += '</div><div class="rd-side"><div class="score-bars rd-bars">' +
-    bar('국민 행복', 'happy', '평균 행복도 ' + fmt(r.avgHappy, 1)) +
-    bar('전력 시스템', 'system', '정전 ' + fmt(d.blackoutMonths || 0) + '개월 · ' + fmt(r.blackoutTotal || 0) + '시간대 · 기술 ' + (d.tiers || 0) + '/' + (d.tiersMax || 36)) +
-    bar('탄소', 'carbon', '최근 3년 ' + (d.intenLast !== undefined ? (+d.intenLast).toFixed(2) : '-') + ' · 기간 평균 ' + (d.intenAvg !== undefined ? (+d.intenAvg).toFixed(2) : '-') + ' t/MWh') +
-    bar('경제', 'economy', '인구 ' + fmt(d.popRatio || 1, 1) + '배 · 수출 비중 ' + fmt((d.tradeShare || 0) * 100, 1) + '%') +
-    bar('자본', 'capital', '자금 + 설비의 남은 가치 ' + fmt(d.worth || 0) + '억') + '</div></div></div>';
+  html += '</div><div class="rd-side">' + scoreBreakdownHtml(r) +
+    '<div class="rd-facts">' + '정전 ' + fmt(d.blackoutMonths || 0) + '개월 · ' + fmt(r.blackoutTotal || 0) + '시간대<br>탄소 원단위 최근 3년 ' + (d.intenLast !== undefined ? (+d.intenLast).toFixed(2) : '-') + ' t/MWh<br>인구 ' + fmt(d.popRatio || 1, 1) + '배 · 기술 ' + (d.tiers || 0) + '/' + (d.tiersMax || 36) + '단계</div></div></div>';
 
   html += '<div class="ending-stats rd-cards">' +
     card('최종 자금', fmt(r.money) + '억', snap ? '마지막 1년 이익 ' + fmt(snap.profit12) + '억' : '') +
-    card('평균 국민 행복도', fmt(r.avgHappy, 1), snap ? '마지막 달 ' + snap.happy : '') +
+    card('평균 민심', fmt(r.avgHappy, 1), snap ? '마지막 달 ' + snap.happy : '') +
     (snap ? card('인구 · 도시', fmt(snap.pop) + '만 명', '도시 ' + snap.c.length + '곳') + card('최대 전력 수요', fmt(snap.peak) + ' MW', '전기값 평균 ' + fmt(snap.smp) + '원/kWh') : '') +
     card('누적 탄소 배출', fmt(Math.round((r.co2Total || 0) / 1000)) + '천 t', snap && snap.inten !== null ? '마지막 달 ' + snap.inten.toFixed(2) + ' t/MWh' : '') +
-    (snap ? card('R&D 수준', fmt(snap.rd), '건설 물가 ×' + fmt(snap.priceIdx, 2)) : '') + '</div>';
+    (snap ? card('연구소 규모', fmt(snap.rd), '건설 물가 ×' + fmt(snap.priceIdx, 2)) : '') + '</div>';
 
   if (snap) {
     // 설비 구성 표
-    const totalMw = snap.fleet.reduce((s, f) => s + (PLANTS[f.t].isLink || PLANTS[f.t].isH2 ? 0 : f.mw), 0) || 1;
+    snap.fleet = (snap.fleet || []).filter((f) => PLANTS[f.t]);   // 지금은 없는 설비(예전 기록의 크래킹 설비 등)는 건너뜀
+    const totalMw = snap.fleet.reduce((s, f) => s + (PLANTS[f.t].isLink ? 0 : f.mw), 0) || 1;
     html += '<h3 class="rd-h">엔딩 때의 전력망 구성</h3><table class="rank-table rd-fleet"><tr><th>설비</th><th>기수</th><th>가동 용량</th><th>비중</th></tr>' +
-      snap.fleet.map((f) => { const pl = PLANTS[f.t]; const extra = pl.isLink || pl.isH2; return '<tr><td><i class="dot" style="background:' + pl.color + '"></i>' + pl.name + '</td><td>' + f.n + '기' + (f.on < f.n ? ' (가동 ' + f.on + ')' : '') + '</td><td>' + fmt(f.mw) + ' MW' + (pl.isH2 ? '분' : '') + '</td><td>' + (extra ? '-' : fmt(100 * f.mw / totalMw) + '%') + '</td></tr>'; }).join('') + '</table>';
+      snap.fleet.map((f) => { const pl = PLANTS[f.t]; const extra = pl.isLink; return '<tr><td><i class="dot" style="background:' + pl.color + '"></i>' + pl.name + '</td><td>' + f.n + '기' + (f.on < f.n ? ' (가동 ' + f.on + ')' : '') + '</td><td>' + fmt(f.mw) + ' MW' + (pl.isH2 ? '분' : '') + '</td><td>' + (extra ? '-' : fmt(100 * f.mw / totalMw) + '%') + '</td></tr>'; }).join('') + '</table>';
     // 마지막 달 발전 비중 막대
     if (snap.gen) {
       const tot = Object.keys(RANK_GEN_LABEL).reduce((s, k) => s + (snap.gen[k] || 0), 0) || 1;
@@ -170,7 +167,10 @@ function showRankDetail(id) {
         '<div class="rd-legend">' + parts.map((k) => '<span><i style="background:' + RANK_GEN_LABEL[k][1] + '"></i>' + RANK_GEN_LABEL[k][0] + ' ' + fmt(100 * snap.gen[k] / tot) + '%</span>').join('') + '</div>';
     }
     // 테크와 정책
-    html += '<h3 class="rd-h">개발한 기술 · 정책 노선</h3><div class="rd-tech">' + TECH_ORDER.map((k, i) => { const lv = (snap.tech || [])[i] || 0; const max = TECH[k].tiers.length; return '<span><b>' + TECH[k].name.replace(/\s*\(.*\)/, '') + '</b> ' + '●'.repeat(lv) + '○'.repeat(max - lv) + '</span>'; }).join('') + '</div>';
+    // 테크: 트리 이름을 함께 저장한 기록만 표시 (예전 기록은 트리 구성이 달라 건너뜀)
+    const tk = (snap.techKeys || []).filter((k) => TECH[k]);
+    html += '<h3 class="rd-h">' + (tk.length ? '연구한 테크 · 정책' : '정책') + '</h3>';
+    if (tk.length) html += '<div class="rd-tech">' + tk.map((k) => { const lv = (snap.tech || [])[snap.techKeys.indexOf(k)] || 0; return '<span><b>' + TECH[k].name + '</b> ' + lv + ' / ' + TECH[k].tiers.length + '단계</span>'; }).join('') + '</div>';
     const pols = Object.keys(snap.pol || {});
     if (pols.length) html += '<div class="rd-tech rd-pol">' + pols.map((k) => '<span><b>' + escapeHtml(k) + '</b> ' + escapeHtml(snap.pol[k]) + '</span>').join('') + '</div>';
   }

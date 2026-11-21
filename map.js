@@ -5,8 +5,9 @@
 //  - 도시는 칸 묶음(tiles). 인구(만 명)를 가짐
 // ============================================================
 
-const COLS = 100;         // 전체 가로 칸 수
-const ROWS = 72;          // 전체 세로 칸 수
+const COUNTRY_CELLS = 2300;   // 나라 칸 수. 7,200 → 5,000 → 2,700 → 2,300: 임기 말에 도시와 설비가 평지의 절반 남짓을 채워 "어디에 지을지"를 고민하게 됨 (2,000칸은 새 도시 자리가 모자랐음)
+const COLS = 68;          // 전체 가로 칸 수 (나라가 전체의 약 68%를 차지하도록 나라 크기에 맞춰 줄임)
+const ROWS = 50;          // 전체 세로 칸 수
 const VIEW_COLS = 32;     // 화면에 보이는 가로 칸 수
 const VIEW_ROWS = 24;     // 화면에 보이는 세로 칸 수
 const TILE = 24;          // 칸 하나의 크기 (픽셀)
@@ -19,11 +20,14 @@ const MOUNTAIN = 'mountain';   // 산: 태양광·풍력만 지을 수 있고, �
 const MOUNTAIN_SHARE = 0.18;       // 땅 중 산의 비율 (후반에 태양광 부지가 모자라도록 넉넉히)
 const MOUNTAIN_CITY_FACTOR = 0.5;  // 산 칸의 도시 수용력 (평지 대비)
 
+const FOREIGN = 'foreign', OFFSHORE = 'offshore';
+function outsideCountry(tile) { return tile === FOREIGN || tile === OFFSHORE; }
 const TERRAIN_COLORS = {
-  [LAND]:  '#7cb342',
-  [RIVER]: '#4fc3f7',
-  [SEA]:   '#1565c0',
-  [MOUNTAIN]: '#2e7d32',
+  [FOREIGN]: '#97c094', [OFFSHORE]: '#559bb1',
+  [LAND]:  '#97c094',
+  [RIVER]: '#76b9bd',
+  [SEA]:   '#559bb1',
+  [MOUNTAIN]: '#809b88',
 };
 
 // 우리나라 시(市) 이름 전체. 새 게임마다 섞어서 랜덤 순서로 씀 (도시 탭에서 이름 변경 가능)
@@ -71,8 +75,9 @@ function footprintAdjacentTo(grid, cells, terrain) {
 }
 
 // 칸 묶음이 지도 가장자리에 닿아 있는가
-function footprintOnEdge(cells) {
-  return cells.some((c) => c.col === 0 || c.col === COLS - 1 || c.row === 0 || c.row === ROWS - 1);
+function footprintOnEdge(cells, grid) {
+  return cells.some(({col, row}) => [[0,1],[1,0],[0,-1],[-1,0]].some(([dx,dy]) =>
+    !isInside(col+dx,row+dy) || outsideCountry(grid[row+dy][col+dx])));
 }
 
 // ------------------------------------------------------------
@@ -82,22 +87,55 @@ function generateMap() {
   const grid = [];
   for (let r = 0; r < ROWS; r++) grid.push(new Array(COLS).fill(LAND));
 
+  // A continuous radial outline, ranked at cell centres to conserve national area exactly.
+  const phase = Array.from({length: 4}, () => rand(0, 2 * Math.PI));
+  const candidates = [];
+  for (let r = 1; r < ROWS - 1; r++) for (let c = 1; c < COLS - 1; c++) {
+    const x = (c + .5 - COLS/2) / (COLS/2), y = (r + .5 - ROWS/2) / (ROWS/2);
+    const a = Math.atan2(y, x);
+    const coast = 1 + .055*Math.sin(3*a+phase[0]) + .04*Math.cos(5*a+phase[1])
+      + .024*Math.sin(9*a+phase[2]) + .016*Math.cos(14*a+phase[3]);
+    candidates.push({r, c, distance: Math.pow(Math.abs(x)**2.8 + Math.abs(y)**2.8, 1/2.8) / coast});
+  }
+  candidates.sort((a,b) => a.distance-b.distance);
+  for (const row of grid) row.fill(FOREIGN);
+  for (const {r,c} of candidates.slice(0, COUNTRY_CELLS)) grid[r][c] = LAND;
+
   const side = ['top', 'bottom', 'left', 'right'][randInt(4)];
-  const baseDepth = 6 + randInt(3);          // 6~8칸
+  const baseDepth = 4 + randInt(3);          // 4~6칸
 
   // 바다: 완만하게 굽이치는 해안선
   let depth = baseDepth;
   const len = (side === 'top' || side === 'bottom') ? COLS : ROWS;
+  const shoreStart = new Array(len);
   for (let i = 0; i < len; i++) {
-    depth = clamp(depth + randInt(3) - 1, baseDepth - 2, baseDepth + 4);
-    for (let d = 0; d < depth; d++) {
-      if (side === 'top') grid[d][i] = SEA;
-      else if (side === 'bottom') grid[ROWS - 1 - d][i] = SEA;
-      else if (side === 'left') grid[i][d] = SEA;
-      else grid[i][COLS - 1 - d] = SEA;
+    depth = clamp(depth + randInt(3) - 1, baseDepth - 2, baseDepth + 3);
+    let wet = 0;
+    const cross = side === 'top' || side === 'bottom' ? ROWS : COLS;
+    for (let d = 0; d < cross && wet < depth; d++) {
+      const c = side === 'left' ? d : side === 'right' ? COLS-1-d : i;
+      const r = side === 'top' ? d : side === 'bottom' ? ROWS-1-d : i;
+      if (grid[r][c] === LAND) {
+        if (!wet) shoreStart[i] = d;
+        grid[r][c] = SEA; wet++;
+      }
     }
   }
 
+  // Continue the sea beyond the country's headlands instead of colouring entire empty rows.
+  for (let i=0; i<len; i++) {
+    let near=i;
+    for (let d=1; shoreStart[near]===undefined && d<len; d++) {
+      if (shoreStart[i-d]!==undefined) near=i-d;
+      else if (shoreStart[i+d]!==undefined) near=i+d;
+    }
+    const limit=shoreStart[near] + Math.sin((i-near)*.3)*2;
+    for (let d=0; d<limit; d++) {
+      const c=side==='left'?d:side==='right'?COLS-1-d:i;
+      const r=side==='top'?d:side==='bottom'?ROWS-1-d:i;
+      if (grid[r]?.[c]===FOREIGN) grid[r][c]=OFFSHORE;
+    }
+  }
   // 강: 바다 반대편에서 출발해 바다까지 굽이치며 흘러감 (두 줄기)
   const riverStarts = (side === 'top' || side === 'bottom')
     ? [Math.floor(COLS * 0.3) + randInt(6), Math.floor(COLS * 0.65) + randInt(6)]
@@ -110,9 +148,9 @@ function generateMap() {
       const step  = side === 'top' ? -1 : 1;
       for (let r = start; r >= 0 && r < ROWS; r += step) {
         if (grid[r][c] === SEA) break;
-        grid[r][c] = RIVER;
+        if (grid[r][c] === LAND) grid[r][c] = RIVER;
         const next = clamp(c + randInt(3) - 1, 1, COLS - 2);
-        if (next !== c && grid[r][next] !== SEA) grid[r][next] = RIVER;
+        if (next !== c && grid[r][next] === LAND) grid[r][next] = RIVER;
         c = next;
       }
     } else {
@@ -121,9 +159,9 @@ function generateMap() {
       const step  = side === 'left' ? -1 : 1;
       for (let c = start; c >= 0 && c < COLS; c += step) {
         if (grid[r][c] === SEA) break;
-        grid[r][c] = RIVER;
+        if (grid[r][c] === LAND) grid[r][c] = RIVER;
         const next = clamp(r + randInt(3) - 1, 1, ROWS - 2);
-        if (next !== r && grid[next][c] !== SEA) grid[next][c] = RIVER;
+        if (next !== r && grid[next][c] === LAND) grid[next][c] = RIVER;
         r = next;
       }
     }
@@ -139,9 +177,9 @@ function generateMap() {
     const centers = [];
     let guard = 0;
     while (centers.length < massCount && guard++ < 500) {
-      const c = 10 + randInt(COLS - 20), r = 8 + randInt(ROWS - 16);
+      const c = 8 + randInt(COLS - 16), r = 6 + randInt(ROWS - 12);
       if (grid[r][c] !== LAND) continue;
-      if (centers.some((o) => Math.hypot(o.c - c, o.r - r) < 28)) continue;   // 산악 지대끼리 최소 28칸 거리
+      if (centers.some((o) => Math.hypot(o.c - c, o.r - r) < 16)) continue;   // 산악 지대끼리 최소 16칸 거리
       centers.push({ c, r });
     }
     let placed = 0;
@@ -224,10 +262,12 @@ function cityContaining(cities, col, row) {
 }
 
 // 씨앗에서 시작해 target칸이 될 때까지 땅으로만 번져 나감
-function growCity(grid, cities, target, gap) {
+// blocked(col, row): 도시가 들어설 수 없는 칸(설비가 선 칸 · 접근 금지 구역)을 알려 주면 그 칸을 비켜서 번짐
+function growCity(grid, cities, target, gap, blocked) {
   for (let tries = 0; tries < 300; tries++) {
     const sc = 3 + randInt(COLS - 6), sr = 3 + randInt(ROWS - 6);
     if (grid[sr][sc] !== LAND) continue;
+    if (blocked && blocked(sc, sr)) continue;
     if (cities.some((ct) => distCellToCity(sc, sr, ct) < gap + 5)) continue;
 
     const tiles = [{ col: sc, row: sr }];
@@ -242,6 +282,7 @@ function growCity(grid, cities, target, gap) {
           if (used.has(k) || cand.has(k)) continue;
           if (c < 1 || c >= COLS - 1 || r < 1 || r >= ROWS - 1) continue;
           if (grid[r][c] !== LAND) continue;
+          if (blocked && blocked(c, r)) continue;
           if (cities.some((ct) => distCellToCity(c, r, ct) < gap)) continue;
           let touch = 0;
           for (const [ddc, ddr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (used.has(tileKey(c + ddc, r + ddr))) touch++;
@@ -268,12 +309,13 @@ function makeCity(tiles, pop, name) {
   return finalizeCity(city);
 }
 
-function generateCities(grid, count) {
+function generateCities(grid, count, tilesEach) {
+  tilesEach = tilesEach || ECON.cityTiles;
   const cities = [];
   // 새 게임마다 도시 이름 순서를 섞음 (시작 도시도, 뒤에 세울 도시도 랜덤)
   for (let i = CITY_NAMES.length - 1; i > 0; i--) { const j = randInt(i + 1); [CITY_NAMES[i], CITY_NAMES[j]] = [CITY_NAMES[j], CITY_NAMES[i]]; }
   for (let i = 0; i < count; i++) {
-    const tiles = growCity(grid, cities, ECON.cityTiles, 6) || growCity(grid, cities, ECON.cityTiles, 3);
+    const tiles = growCity(grid, cities, tilesEach, 6) || growCity(grid, cities, tilesEach, 3);
     if (!tiles) break;
     cities.push(makeCity(tiles, 30 + randInt(31), CITY_NAMES[cities.length % CITY_NAMES.length]));   // 30~60만 명
   }
@@ -304,82 +346,6 @@ function tilesConnected(keys) {
 // ------------------------------------------------------------
 // 그리기 (모두 지도 좌표 기준. 호출 쪽에서 view만큼 translate 해둠)
 // ------------------------------------------------------------
-function drawTerrain(ctx, grid, view) {
-  const c0 = Math.max(0, Math.floor(view.col)), r0 = Math.max(0, Math.floor(view.row));
-  const c1 = Math.min(COLS, Math.ceil(c0 + (view.cols || VIEW_COLS)) + 1), r1 = Math.min(ROWS, Math.ceil(r0 + (view.rows || VIEW_ROWS)) + 1);
-  for (let r = r0; r < r1; r++) {
-    for (let c = c0; c < c1; c++) {
-      ctx.fillStyle = TERRAIN_COLORS[grid[r][c]];
-      ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
-      if (grid[r][c] === LAND && (r + c) % 2 === 0) {
-        ctx.fillStyle = 'rgba(0,0,0,0.04)';
-        ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
-      } else if (grid[r][c] === MOUNTAIN) {
-        // 산 봉우리 표시
-        ctx.fillStyle = 'rgba(0,0,0,0.28)';
-        ctx.beginPath(); ctx.moveTo(c * TILE + 4, r * TILE + TILE - 5); ctx.lineTo(c * TILE + TILE / 2, r * TILE + 5); ctx.lineTo(c * TILE + TILE - 4, r * TILE + TILE - 5); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.35)';
-        ctx.beginPath(); ctx.moveTo(c * TILE + TILE / 2 - 3, r * TILE + 9); ctx.lineTo(c * TILE + TILE / 2, r * TILE + 5); ctx.lineTo(c * TILE + TILE / 2 + 3, r * TILE + 9); ctx.closePath(); ctx.fill();
-      }
-    }
-  }
-
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.22)';
-  ctx.lineWidth = 1;
-  for (let c = c0; c <= c1; c++) {
-    ctx.beginPath();
-    ctx.moveTo(c * TILE + 0.5, r0 * TILE);
-    ctx.lineTo(c * TILE + 0.5, r1 * TILE);
-    ctx.stroke();
-  }
-  for (let r = r0; r <= r1; r++) {
-    ctx.beginPath();
-    ctx.moveTo(c0 * TILE, r * TILE + 0.5);
-    ctx.lineTo(c1 * TILE, r * TILE + 0.5);
-    ctx.stroke();
-  }
-}
-
-function drawCities(ctx, cities) {
-  for (const city of cities) {
-    for (const t of city.tiles) {
-      const x = t.col * TILE, y = t.row * TILE;
-      const seed = (t.col * 7919 + t.row * 104729) % 97;
-
-      ctx.fillStyle = '#8d8d8d';
-      ctx.fillRect(x, y, TILE, TILE);
-      ctx.fillStyle = '#6f6f6f';
-      ctx.fillRect(x, y, TILE, 3);
-      ctx.fillRect(x, y, 3, TILE);
-
-      const h1 = 8 + (seed % 9);
-      const h2 = 6 + ((seed * 3) % 11);
-      ctx.fillStyle = seed % 3 === 0 ? '#455a64' : seed % 3 === 1 ? '#546e7a' : '#607d8b';
-      ctx.fillRect(x + 5, y + TILE - 3 - h1, 7, h1);
-      ctx.fillStyle = seed % 2 === 0 ? '#37474f' : '#4e6a75';
-      ctx.fillRect(x + 14, y + TILE - 3 - h2, 7, h2);
-      ctx.fillStyle = '#ffe082';
-      if (seed % 4 !== 0) ctx.fillRect(x + 7, y + TILE - 3 - h1 + 3, 2, 2);
-      if (seed % 5 !== 0) ctx.fillRect(x + 16, y + TILE - 3 - h2 + 2, 2, 2);
-    }
-
-    // 경계선: 도시가 아닌 칸과 맞닿은 변만
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([5, 3]);
-    ctx.beginPath();
-    for (const t of city.tiles) {
-      const x = t.col * TILE, y = t.row * TILE;
-      if (!city.keys.has(tileKey(t.col, t.row - 1))) { ctx.moveTo(x, y + 1);         ctx.lineTo(x + TILE, y + 1); }
-      if (!city.keys.has(tileKey(t.col, t.row + 1))) { ctx.moveTo(x, y + TILE - 1);  ctx.lineTo(x + TILE, y + TILE - 1); }
-      if (!city.keys.has(tileKey(t.col - 1, t.row))) { ctx.moveTo(x + 1, y);         ctx.lineTo(x + 1, y + TILE); }
-      if (!city.keys.has(tileKey(t.col + 1, t.row))) { ctx.moveTo(x + TILE - 1, y);  ctx.lineTo(x + TILE - 1, y + TILE); }
-    }
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
-}
-
 function drawCityLabels(ctx, cities) {
   for (const city of cities) {
     const b = city.bounds;
@@ -388,13 +354,17 @@ function drawCityLabels(ctx, cities) {
     const density = cityDensity(city);
     const crowded = density > ECON.densityLimit;
     const label = city.name + ' · ' + Math.round(city.pop) + '만' + (crowded ? ' ⚠과밀' : '');
-    ctx.font = 'bold 11px system-ui, sans-serif';
+    const scale = ctx.getTransform().a;
+    const fontSize = clamp(11 * scale, 10, 14)/scale;
+    const pad = 4/scale;
+    ctx.font = '600 ' + fontSize + 'px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    const w = ctx.measureText(label).width + 10;
+    const w = ctx.measureText(label).width + pad*2;
+    const h = fontSize+pad*1.5, top = Math.max(0,y-h-pad*.5);
     ctx.fillStyle = crowded ? 'rgba(120,30,30,0.85)' : 'rgba(0,0,0,0.7)';
-    ctx.fillRect(cx - w / 2, Math.max(0, y - 15), w, 14);
+    ctx.beginPath(); ctx.roundRect(cx-w/2,top,w,h,pad); ctx.fill();
     ctx.fillStyle = '#fff';
-    ctx.fillText(label, cx, Math.max(14, y - 1));
+    ctx.fillText(label, cx, top+h-pad*.55);
   }
 }

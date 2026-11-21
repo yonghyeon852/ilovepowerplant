@@ -10,7 +10,7 @@ function questFailed(s, id) { return (s.quests || []).some((q) => q.id === id &&
 function pol(s, key) { return (s.policies || {})[key]; }
 function flag(s, key) { return !!(s.flags && s.flags[key]); }
 function setFlag(s, key) { if (!s.flags) s.flags = {}; s.flags[key] = true; }
-function rdCount(s) { return RD_STAGES.reduce((a, st) => a + ((s.rd || {})[st.id] || 0), 0); }
+function rdCount(s) { return Math.floor(rdLevel(s) / 20); }   // (예전의 "연구원 수" 조건을 연구소 규모로 환산)
 function intensityNow(s) { return s.lastReport ? reportIntensity(s.lastReport) : 0.4; }
 function mountainRenewables(s) { return s.buildings.filter((b) => b.status === 'online' && b.mountain && PLANTS[b.type].renewable).length; }
 function stopRandom(s, pred, name, months, n) {
@@ -39,9 +39,9 @@ DECISIONS.push(
     cond: (s) => onlineOf(s, (p) => p.kind === 'coal').length > 0,
     desc: '국제 금융기관이 석탄 발전에 대한 투자와 보험을 끊겠다고 발표했습니다. 석탄을 계속 쓰면 투자 비용이 오르고, 폐쇄 계획을 내면 전환 기금을 받을 수 있습니다.',
     choices: [
-      { label: '석탄 단계적 폐쇄 로드맵 발표', desc: () => '행복도 +3 · 2년 안에 석탄 1기 철거 목표 (달성 시 전환 기금)', apply(s) { s.happiness = clamp(s.happiness + 3, 0, 100); return '석탄 폐쇄 로드맵 발표' + giveQuest(s, 'coal_exit'); } },
-      { label: 'CCS 투자로 대응', cost: (s) => scaleMoney(s, 1200), desc: (s) => '−' + fmt(scaleMoney(s, 1200)) + '억 · 석탄 테크 다음 연구 성공 확률 +15%', apply(s) { const c = scaleMoney(s, 1200); s.money -= c; if (!s.techPity) s.techPity = {}; s.techPity.coal = (s.techPity.coal || 0) + 0.15; return 'CCS 투자 ' + fmt(c) + '억: 석탄 연구 확률 +15%'; } },
-      { label: '석탄을 유지한다', desc: () => '12개월 모든 건설비 +15% (투자자 이탈) · 행복도 −3', apply(s) { addEffect(s, { name: '석탄 제재 (건설비 +15%)', capexMult: 1.15 }, 12); s.happiness = clamp(s.happiness - 3, 0, 100); setFlag(s, 'coalStay'); return '석탄 유지: 12개월 건설비 +15%, 행복도 −3'; } },
+      { label: '석탄 단계적 폐쇄 로드맵 발표', desc: () => '민심 +3 · 2년 안에 석탄 1기 철거 목표 (달성 시 전환 기금)', apply(s) { s.happiness = clamp(s.happiness + 3, 0, 100); return '석탄 폐쇄 로드맵 발표' + giveQuest(s, 'coal_exit'); } },
+      { label: '탄소 포집에 투자', cost: (s) => scaleMoney(s, 1200), desc: (s) => '−' + fmt(scaleMoney(s, 1200)) + '억 · 석탄 테크 다음 연구 확률 +15%', apply(s) { const c = scaleMoney(s, 1200); s.money -= c; if (!s.techPity) s.techPity = {}; s.techPity.coal = (s.techPity.coal || 0) + 0.15; return '탄소 포집 투자 ' + fmt(c) + '억: 석탄 연구 확률 +15%'; } },
+      { label: '석탄을 유지한다', desc: () => '12개월 모든 건설비 +15% (투자자 이탈) · 민심 −3', apply(s) { addEffect(s, { name: '석탄 제재 (건설비 +15%)', capexMult: 1.15 }, 12); s.happiness = clamp(s.happiness - 3, 0, 100); setFlag(s, 'coalStay'); return '석탄 유지: 12개월 건설비 +15%, 민심 −3'; } },
     ],
   },
   {
@@ -68,8 +68,8 @@ DECISIONS.push(
     cond: (s) => onlineOf(s, isNuke2).length > 0,
     desc: '원전에서 30km 떨어진 곳에서 규모 5.8 지진이 났습니다. 설비 손상은 확인되지 않았지만 국민은 불안해합니다.',
     choices: [
-      { label: '정밀 점검 (2개월 정지)', cost: (s) => scaleMoney(s, 400), desc: (s) => '−' + fmt(scaleMoney(s, 400)) + '억 · 원전 1기 2개월 정지 · 행복도 +2', apply(s) { const c = scaleMoney(s, 400); s.money -= c; stopRandom(s, isNuke2, '지진 정밀 점검', 2); s.happiness = clamp(s.happiness + 2, 0, 100); return '정밀 점검: 원전 1기 2개월 정지, 행복도 +2'; } },
-      { label: '가동 유지', desc: () => '행복도 −5 · 30% 확률로 균열 발견 → 6개월 정지', apply(s) { s.happiness = clamp(s.happiness - 5, 0, 100); if (Math.random() < 0.3) { stopRandom(s, isNuke2, '지진 균열 보수', 6); return '가동 유지 → 균열 발견! 원전 1기 6개월 정지, 행복도 −5'; } return '가동 유지: 이상 없음, 행복도 −5'; } },
+      { label: '정밀 점검 (2개월 정지)', cost: (s) => scaleMoney(s, 400), desc: (s) => '−' + fmt(scaleMoney(s, 400)) + '억 · 원전 1기 2개월 정지 · 민심 +2', apply(s) { const c = scaleMoney(s, 400); s.money -= c; stopRandom(s, isNuke2, '지진 정밀 점검', 2); s.happiness = clamp(s.happiness + 2, 0, 100); return '정밀 점검: 원전 1기 2개월 정지, 민심 +2'; } },
+      { label: '가동 유지', desc: () => '민심 −5 · 30% 확률로 균열 발견 → 6개월 정지', apply(s) { s.happiness = clamp(s.happiness - 5, 0, 100); if (Math.random() < 0.3) { stopRandom(s, isNuke2, '지진 균열 보수', 6); return '가동 유지 → 균열 발견! 원전 1기 6개월 정지, 민심 −5'; } return '가동 유지: 이상 없음, 민심 −5'; } },
     ],
   },
   {
@@ -78,7 +78,7 @@ DECISIONS.push(
     desc: '건조한 날씨에 산불이 번져 산지 태양광·풍력 단지를 위협합니다.',
     choices: [
       { label: '진화 예산 투입', cost: (s) => scaleMoney(s, 600), desc: (s) => '−' + fmt(scaleMoney(s, 600)) + '억 · 1개월 태양광 −30%', apply(s) { const c = scaleMoney(s, 600); s.money -= c; addEffect(s, { name: '산불 (태양광 −30%)', kindDerate: { kind: 'solar', factor: 0.3 } }, 1); return '진화 ' + fmt(c) + '억: 1개월 태양광 −30%'; } },
-      { label: '자연 진화를 기다린다', desc: () => '2개월 태양광 −60%, 풍력 −30% · 행복도 −3', apply(s) { addEffect(s, { name: '산불 (태양광 −60%)', kindDerate: { kind: 'solar', factor: 0.6 } }, 2); addEffect(s, { name: '산불 (풍력 −30%)', kindDerate: { kind: 'wind', factor: 0.3 } }, 2); s.happiness = clamp(s.happiness - 3, 0, 100); return '산불 방치: 2개월 재생 출력 감소, 행복도 −3'; } },
+      { label: '자연 진화를 기다린다', desc: () => '2개월 태양광 −60%, 풍력 −30% · 민심 −3', apply(s) { addEffect(s, { name: '산불 (태양광 −60%)', kindDerate: { kind: 'solar', factor: 0.6 } }, 2); addEffect(s, { name: '산불 (풍력 −30%)', kindDerate: { kind: 'wind', factor: 0.3 } }, 2); s.happiness = clamp(s.happiness - 3, 0, 100); return '산불 방치: 2개월 재생 출력 감소, 민심 −3'; } },
     ],
   },
   {
@@ -87,7 +87,7 @@ DECISIONS.push(
     desc: '하천이 범람해 저지대 발전소가 침수됐습니다. 화력 1기가 복구 때까지 멈춥니다.',
     choices: [
       { label: '제방·배수 시설 투자', cost: (s) => scaleMoney(s, 800), desc: (s) => '−' + fmt(scaleMoney(s, 800)) + '억 · 화력 1기 1개월 정지 · 앞으로 홍수 피해 없음', apply(s) { const c = scaleMoney(s, 800); s.money -= c; stopRandom(s, isThermal2, '침수 복구', 1); setFlag(s, 'floodSafe'); return '제방 투자 ' + fmt(c) + '억: 이후 홍수 면역'; } },
-      { label: '복구만 한다', desc: () => '화력 1기 2개월 정지 · 행복도 −2', apply(s) { stopRandom(s, isThermal2, '침수 복구', 2); s.happiness = clamp(s.happiness - 2, 0, 100); return '침수 복구: 화력 1기 2개월 정지, 행복도 −2'; } },
+      { label: '복구만 한다', desc: () => '화력 1기 2개월 정지 · 민심 −2', apply(s) { stopRandom(s, isThermal2, '침수 복구', 2); s.happiness = clamp(s.happiness - 2, 0, 100); return '침수 복구: 화력 1기 2개월 정지, 민심 −2'; } },
     ],
   },
   {
@@ -96,7 +96,7 @@ DECISIONS.push(
     desc: '해외 해커 조직이 급전 시스템을 공격했습니다. 발전소 두 곳이 수동 운전으로 전환돼 한 달 동안 멈춥니다.',
     choices: [
       { label: '보안 체계 전면 투자', cost: (s) => scaleMoney(s, 700), desc: (s) => '−' + fmt(scaleMoney(s, 700)) + '억 · 설비 1기 1개월 정지 · 앞으로 사이버 공격 면역', apply(s) { const c = scaleMoney(s, 700); s.money -= c; stopRandom(s, isThermal2, '사이버 공격 복구', 1); setFlag(s, 'cyberSafe'); return '보안 투자 ' + fmt(c) + '억: 이후 사이버 공격 면역'; } },
-      { label: '수동 운전으로 버틴다', desc: () => '설비 2기 1개월 정지 · 정전 없이 넘기면 행복도 +3', apply(s) { stopRandom(s, isThermal2, '사이버 공격 복구', 1, 2); addEffect(s, { name: '사이버 공격 대응 (수동 운전)', track: 'noBlackout', reward: { money: scaleMoney(s, 300), happy: 3 } }, 1); return '수동 운전: 설비 2기 1개월 정지'; } },
+      { label: '수동 운전으로 버틴다', desc: () => '설비 2기 1개월 정지 · 정전 없이 넘기면 민심 +3', apply(s) { stopRandom(s, isThermal2, '사이버 공격 복구', 1, 2); addEffect(s, { name: '사이버 공격 대응 (수동 운전)', track: 'noBlackout', reward: { money: scaleMoney(s, 300), happy: 3 } }, 1); return '수동 운전: 설비 2기 1개월 정지'; } },
     ],
   },
   // ================= 정치 =================
@@ -105,9 +105,9 @@ DECISIONS.push(
     cond: (s) => s.lastReport && (s.lastReport.money.clawback || 0) > 0,
     desc: '감사원이 전력 부문이 국민 부담으로 과도한 이익을 냈다고 지적했습니다. 이익을 국민에게 돌려주거나 투자로 증명해야 합니다.',
     choices: [
-      { label: '6개월 요금 인하로 환원', desc: () => 'SMP 상한 −15% (6개월) · 행복도 +4', apply(s) { addEffect(s, { name: '감사 후 요금 인하 (SMP 상한 −15%)', smpCapMult: 0.85 }, 6); s.happiness = clamp(s.happiness + 4, 0, 100); return '요금 인하: 6개월 SMP 상한 −15%, 행복도 +4'; } },
+      { label: '6개월 요금 인하로 환원', desc: () => 'SMP 상한 −15% (6개월) · 민심 +4', apply(s) { addEffect(s, { name: '감사 후 요금 인하 (SMP 상한 −15%)', smpCapMult: 0.85 }, 6); s.happiness = clamp(s.happiness + 4, 0, 100); return '요금 인하: 6개월 SMP 상한 −15%, 민심 +4'; } },
       { label: '설비 투자 확대 약속', desc: () => '15개월 안에 조절 설비를 최대 수요의 115%로 (목표)', apply(s) { return '투자 확대 약속' + giveQuest(s, 'capacity_up'); } },
-      { label: '반박한다', desc: () => '행복도 −4', apply(s) { s.happiness = clamp(s.happiness - 4, 0, 100); return '감사 결과 반박: 행복도 −4'; } },
+      { label: '반박한다', desc: () => '민심 −4', apply(s) { s.happiness = clamp(s.happiness - 4, 0, 100); return '감사 결과 반박: 민심 −4'; } },
     ],
   },
   {
@@ -115,17 +115,17 @@ DECISIONS.push(
     cond: (s) => s.buildings.some((b) => PLANTS[b.type].kind === 'nuclear' && b.status === 'building'),
     desc: '건설 중인 원전 지역 주민들이 주민투표를 요구합니다. 지역 지원금으로 달래거나, 투표를 강행할 수 있습니다.',
     choices: [
-      { label: '지역 지원금 지급', cost: (s) => scaleMoney(s, 900), desc: (s) => '−' + fmt(scaleMoney(s, 900)) + '억 · 행복도 +2', apply(s) { const c = scaleMoney(s, 900); s.money -= c; s.happiness = clamp(s.happiness + 2, 0, 100); return '지역 지원금 ' + fmt(c) + '억, 행복도 +2'; } },
-      { label: '투표를 강행한다', desc: () => '50%: 가결(행복도 +3) / 50%: 부결(공사 +6개월, 행복도 −5)', apply(s) { if (Math.random() < 0.5) { s.happiness = clamp(s.happiness + 3, 0, 100); return '주민투표 가결: 행복도 +3'; } for (const b of s.buildings) if (PLANTS[b.type].kind === 'nuclear' && b.status === 'building') b.monthsLeft += 6; s.happiness = clamp(s.happiness - 5, 0, 100); return '주민투표 부결: 원전 공사 +6개월, 행복도 −5'; } },
+      { label: '지역 지원금 지급', cost: (s) => scaleMoney(s, 900), desc: (s) => '−' + fmt(scaleMoney(s, 900)) + '억 · 민심 +2', apply(s) { const c = scaleMoney(s, 900); s.money -= c; s.happiness = clamp(s.happiness + 2, 0, 100); return '지역 지원금 ' + fmt(c) + '억, 민심 +2'; } },
+      { label: '투표를 강행한다', desc: () => '50%: 가결(민심 +3) / 50%: 부결(공사 +6개월, 민심 −5)', apply(s) { if (Math.random() < 0.5) { s.happiness = clamp(s.happiness + 3, 0, 100); return '주민투표 가결: 민심 +3'; } for (const b of s.buildings) if (PLANTS[b.type].kind === 'nuclear' && b.status === 'building') b.monthsLeft += 6; s.happiness = clamp(s.happiness - 5, 0, 100); return '주민투표 부결: 원전 공사 +6개월, 민심 −5'; } },
     ],
   },
   {
-    id: 'union_rd', cat: 'politics', crisis: true, icon: '✊', name: '연구원 처우 개선 요구', minYear: 2,
+    id: 'union_rd', cat: 'politics', crisis: true, icon: '✊', name: '연구소 처우 개선 요구', minYear: 2,
     cond: (s) => rdCount(s) >= 5,
     desc: '연구소 노조가 급여 인상을 요구하며 연구 중단을 예고했습니다.',
     choices: [
-      { label: '처우 개선', desc: (s) => '24개월 매달 인건비의 25% 추가 (' + fmt(rdSalary(s) * 0.25, 1) + '억) · 연구 성공 확률 +5% (24개월)', apply(s) { const c = rdSalary(s) * 0.25; addEffect(s, { name: '연구원 처우 개선 (추가 인건비)', monthlyCost: c, techBonus: 0.05 }, 24); return '처우 개선: 24개월 매달 +' + fmt(c, 1) + '억, 연구 확률 +5%'; } },
-      { label: '거부한다', desc: () => '연구원 1명 퇴사 · 행복도 −1', apply(s) { const who = resignOnFailure(s); s.happiness = clamp(s.happiness - 1, 0, 100); return '요구 거부: ' + (who ? who + ' 1명 퇴사' : '퇴사 없음') + ', 행복도 −1'; } },
+      { label: '처우 개선', cost: (s) => scaleMoney(s, 300), desc: (s) => '−' + fmt(scaleMoney(s, 300)) + '억 · 2년간 연구 확률 +5%', apply(s) { const c = scaleMoney(s, 300); s.money -= c; addEffect(s, { name: '연구소 처우 개선 (연구 확률 +5%)', techBonus: 0.05 }, 24); return '처우 개선 ' + fmt(c) + '억: 2년간 연구 확률 +5%'; } },
+      { label: '거부한다', desc: () => '연구소 규모 −10 · 민심 −1', apply(s) { s.rdLab = Math.max(0, rdLevel(s) - 10); s.happiness = clamp(s.happiness - 1, 0, 100); return '요구 거부: 연구소 규모 −10, 민심 −1'; } },
     ],
   },
   {
@@ -134,7 +134,7 @@ DECISIONS.push(
     desc: '환경단체가 낸 소송에서 법원이 정부의 배출 기준 위반을 인정했습니다. 감축 계획을 내거나 벌금을 내야 합니다.',
     choices: [
       { label: '감축 계획 제출', desc: () => '5년 안에 탄소 원단위 30% 감축 목표', apply(s) { return '감축 계획 제출' + giveQuest(s, 'co2cut'); } },
-      { label: '벌금을 낸다', cost: (s) => scaleMoney(s, 1500), desc: (s) => '−' + fmt(scaleMoney(s, 1500)) + '억 · 행복도 −2', apply(s) { const c = scaleMoney(s, 1500); s.money -= c; s.happiness = clamp(s.happiness - 2, 0, 100); return '벌금 ' + fmt(c) + '억, 행복도 −2'; } },
+      { label: '벌금을 낸다', cost: (s) => scaleMoney(s, 1500), desc: (s) => '−' + fmt(scaleMoney(s, 1500)) + '억 · 민심 −2', apply(s) { const c = scaleMoney(s, 1500); s.money -= c; s.happiness = clamp(s.happiness - 2, 0, 100); return '벌금 ' + fmt(c) + '억, 민심 −2'; } },
     ],
   },
   {
@@ -142,9 +142,9 @@ DECISIONS.push(
     cond: (s) => !chose(s, 'local_election'),
     desc: '지방선거를 앞두고 여당이 에너지 공약을 요구합니다. 공약은 목표가 되고, 지키면 큰 지지를 얻습니다.',
     choices: [
-      { label: '재생에너지 40% 공약', desc: () => '행복도 +3 · 4년 안에 재생 비중 40% 목표', apply(s) { s.happiness = clamp(s.happiness + 3, 0, 100); return '재생 40% 공약' + giveQuest(s, 'ren40'); } },
-      { label: '전기요금 안정 공약', desc: () => '행복도 +3 · 1년 안에 SMP 10% 인하 목표', apply(s) { s.happiness = clamp(s.happiness + 3, 0, 100); return '요금 안정 공약' + giveQuest(s, 'cheap_power'); } },
-      { label: '공약을 내지 않는다', desc: () => '행복도 −2', apply(s) { s.happiness = clamp(s.happiness - 2, 0, 100); return '공약 없음: 행복도 −2'; } },
+      { label: '재생에너지 40% 공약', desc: () => '민심 +3 · 4년 안에 재생 비중 40% 목표', apply(s) { s.happiness = clamp(s.happiness + 3, 0, 100); return '재생 40% 공약' + giveQuest(s, 'ren40'); } },
+      { label: '전기요금 안정 공약', desc: () => '민심 +3 · 1년 안에 SMP 10% 인하 목표', apply(s) { s.happiness = clamp(s.happiness + 3, 0, 100); return '요금 안정 공약' + giveQuest(s, 'cheap_power'); } },
+      { label: '공약을 내지 않는다', desc: () => '민심 −2', apply(s) { s.happiness = clamp(s.happiness - 2, 0, 100); return '공약 없음: 민심 −2'; } },
     ],
   },
   // ================= 산업·기회 (앞선 선택과 연계) =================
@@ -162,7 +162,7 @@ DECISIONS.push(
     desc: '유치했던 데이터센터가 AI 수요로 증설을 요청합니다. 수요가 6% 더 늘지만 보조금이 큽니다. 전력이 모자라면 정전이 납니다.',
     choices: [
       { label: '증설 허가', desc: (s) => '수요 +6% · +' + fmt(scaleMoney(s, 2500)) + '억', apply(s) { for (const c of s.cities) c.pop *= 1.06; const m = Math.round(scaleMoney(s, 2500) * policyMods(s).subsidyMult); s.money += m; return '데이터센터 증설: 수요 +6%, 보조금 ' + fmt(m) + '억' + giveQuest(s, 'capacity_up'); } },
-      { label: '거절한다', desc: () => '행복도 −1', apply(s) { s.happiness = clamp(s.happiness - 1, 0, 100); return '증설 거절: 행복도 −1'; } },
+      { label: '거절한다', desc: () => '민심 −1', apply(s) { s.happiness = clamp(s.happiness - 1, 0, 100); return '증설 거절: 민심 −1'; } },
     ],
   },
   {
@@ -170,17 +170,8 @@ DECISIONS.push(
     cond: (s) => chose(s, 'factory', '유치') && !chose(s, 'factory_pollution'),
     desc: '유치한 공장 단지 주변에서 대기·수질 오염 민원이 잇따릅니다.',
     choices: [
-      { label: '정화 시설 지원', cost: (s) => scaleMoney(s, 700), desc: (s) => '−' + fmt(scaleMoney(s, 700)) + '억 · 행복도 +2', apply(s) { const c = scaleMoney(s, 700); s.money -= c; s.happiness = clamp(s.happiness + 2, 0, 100); return '정화 시설 ' + fmt(c) + '억, 행복도 +2'; } },
-      { label: '기업에 맡긴다', desc: () => '행복도 −4', apply(s) { s.happiness = clamp(s.happiness - 4, 0, 100); return '오염 민원 방치: 행복도 −4'; } },
-    ],
-  },
-  {
-    id: 'h2_renew', cat: 'industry', icon: '📜', name: '수소 재계약 제안', minYear: 4,
-    cond: (s) => questDone(s, 'h2_contract') && !chose(s, 'h2_renew') && onlineOf(s, (p) => p.isH2).length > 0,
-    desc: '첫 계약을 잘 지킨 덕에 이웃 나라가 더 좋은 조건으로 재계약을 제안했습니다.',
-    choices: [
-      { label: '재계약', desc: () => '24개월 수소 수출 단가 ×1.2', apply(s) { addEffect(s, { name: '수소 재계약 (수출 단가 ×1.2)', h2PriceMult: 1.2 }, 24); return '수소 재계약: 24개월 수출 단가 ×1.2'; } },
-      { label: '거절한다', desc: () => '변화 없음', apply() { return '재계약을 거절했습니다'; } },
+      { label: '정화 시설 지원', cost: (s) => scaleMoney(s, 700), desc: (s) => '−' + fmt(scaleMoney(s, 700)) + '억 · 민심 +2', apply(s) { const c = scaleMoney(s, 700); s.money -= c; s.happiness = clamp(s.happiness + 2, 0, 100); return '정화 시설 ' + fmt(c) + '억, 민심 +2'; } },
+      { label: '기업에 맡긴다', desc: () => '민심 −4', apply(s) { s.happiness = clamp(s.happiness - 4, 0, 100); return '오염 민원 방치: 민심 −4'; } },
     ],
   },
   {
@@ -198,7 +189,7 @@ DECISIONS.push(
     choices: [
       { label: '감축 계획 제출', desc: () => '5년 안에 탄소 원단위 30% 감축 목표', apply(s) { return '감축 계획 제출' + giveQuest(s, 'co2cut'); } },
       { label: '분담금을 더 낸다', cost: (s) => scaleMoney(s, 1000), desc: (s) => '−' + fmt(scaleMoney(s, 1000)) + '억', apply(s) { const c = scaleMoney(s, 1000); s.money -= c; return '추가 분담금 ' + fmt(c) + '억'; } },
-      { label: '탈퇴한다', desc: () => '3년간 수출 금지 · 행복도 −4', apply(s) { addEffect(s, { name: '탄소 협약 탈퇴 (수출 금지)', exportBan: true }, 36); s.happiness = clamp(s.happiness - 4, 0, 100); return '협약 탈퇴: 3년 수출 금지, 행복도 −4'; } },
+      { label: '탈퇴한다', desc: () => '3년간 수출 금지 · 민심 −4', apply(s) { addEffect(s, { name: '탄소 협약 탈퇴 (수출 금지)', exportBan: true }, 36); s.happiness = clamp(s.happiness - 4, 0, 100); return '협약 탈퇴: 3년 수출 금지, 민심 −4'; } },
     ],
   },
   {
@@ -212,10 +203,10 @@ DECISIONS.push(
   },
   {
     id: 'smr_export', cat: 'industry', icon: '🚢', name: 'SMR 해외 수출 계약', minYear: 5,
-    cond: (s) => (s.tech.nuclear || 0) >= 3 && onlineOf(s, (p) => p.short === 'SMR').length > 0 && !chose(s, 'smr_export'),
+    cond: (s) => (s.tech.nuclear || 0) >= 5 && onlineOf(s, (p) => p.short === 'SMR').length > 0 && !chose(s, 'smr_export'),
     desc: '양산 체계를 갖춘 우리 SMR을 해외에서 사겠다고 합니다. 수출 수입과 국가 위상이 오릅니다.',
     choices: [
-      { label: '계약한다', desc: (s) => '+' + fmt(scaleMoney(s, 3000)) + '억 · 행복도 +4', apply(s) { const m = scaleMoney(s, 3000); s.money += m; s.happiness = clamp(s.happiness + 4, 0, 100); return 'SMR 수출: +' + fmt(m) + '억, 행복도 +4'; } },
+      { label: '계약한다', desc: (s) => '+' + fmt(scaleMoney(s, 3000)) + '억 · 민심 +4', apply(s) { const m = scaleMoney(s, 3000); s.money += m; s.happiness = clamp(s.happiness + 4, 0, 100); return 'SMR 수출: +' + fmt(m) + '억, 민심 +4'; } },
     ],
   },
   {
@@ -232,7 +223,7 @@ DECISIONS.push(
     cond: (s) => questDone(s, 'coal_exit') && !chose(s, 'coal_exit_fund'),
     desc: '석탄 폐쇄 약속을 지킨 정부에 국제 기금이 전환 자금을 지급합니다.',
     choices: [
-      { label: '수령', desc: (s) => '+' + fmt(scaleMoney(s, 2000)) + '억 · 행복도 +3', apply(s) { const m = scaleMoney(s, 2000); s.money += m; s.happiness = clamp(s.happiness + 3, 0, 100); return '전환 기금 +' + fmt(m) + '억, 행복도 +3'; } },
+      { label: '수령', desc: (s) => '+' + fmt(scaleMoney(s, 2000)) + '억 · 민심 +3', apply(s) { const m = scaleMoney(s, 2000); s.money += m; s.happiness = clamp(s.happiness + 3, 0, 100); return '전환 기금 +' + fmt(m) + '억, 민심 +3'; } },
     ],
   },
 );
@@ -249,24 +240,17 @@ QUESTS.push(
   },
   {
     id: 'ren40', icon: '🌱', title: '재생에너지 40%', months: 48, reward: { money: 3000, happy: 6 }, penalty: { happy: 4 },
-    desc: '한 달 발전량의 40% 이상을 태양광·풍력으로 채우세요. 탈원전 노선이나 선거 공약과 어울립니다.',
-    cond: (s) => (pol(s, 'nuclear') === 'anti' || chose(s, 'local_election', '재생')) && s.lastReport && renShareOf(s.lastReport) >= 0.2 && renShareOf(s.lastReport) < 0.4,
+    desc: '한 달 발전량의 40% 이상을 태양광·풍력으로 채우세요.',
+    cond: (s) => (pol(s, 'energy') === 'renew' || chose(s, 'local_election', '재생')) && s.lastReport && renShareOf(s.lastReport) >= 0.2 && renShareOf(s.lastReport) < 0.4,
     check: (s, r) => renShareOf(r) >= 0.4,
     progress: (s) => (s.lastReport ? fmt(renShareOf(s.lastReport) * 100) : '0') + '% / 40%',
   },
   {
     id: 'nuclear_share', icon: '☢', title: '원자력 비중 30%', months: 48, reward: { money: 3000, happy: 5 }, penalty: { happy: 3 },
-    desc: '친원전 노선: 한 달 발전량의 30% 이상을 원전·SMR로 채우세요.',
-    cond: (s) => pol(s, 'nuclear') === 'pro' && onlineOf(s, isNuke2).length > 0 && s.lastReport && (s.lastReport.energy.gen.nuclear / Math.max(1, s.lastReport.energy.gen.nuclear + s.lastReport.energy.gen.coal + s.lastReport.energy.gen.ccgt + s.lastReport.energy.gen.gt + s.lastReport.energy.gen.solar + s.lastReport.energy.gen.wind)) < 0.3,
+    desc: '한 달 발전량의 30% 이상을 원전·SMR로 채우세요.',
+    cond: (s) => pol(s, 'energy') === 'nuclear' && onlineOf(s, isNuke2).length > 0 && s.lastReport && (s.lastReport.energy.gen.nuclear / Math.max(1, s.lastReport.energy.gen.nuclear + s.lastReport.energy.gen.coal + s.lastReport.energy.gen.ccgt + s.lastReport.energy.gen.gt + s.lastReport.energy.gen.solar + s.lastReport.energy.gen.wind)) < 0.3,
     check: (s, r) => { const g = r.energy.gen; const t = g.nuclear + g.coal + g.ccgt + g.gt + g.solar + g.wind; return t > 0 && g.nuclear / t >= 0.3; },
     progress: (s) => { const r = s.lastReport; if (!r) return '0% / 30%'; const g = r.energy.gen; const t = g.nuclear + g.coal + g.ccgt + g.gt + g.solar + g.wind; return fmt(t > 0 ? g.nuclear / t * 100 : 0) + '% / 30%'; },
-  },
-  {
-    id: 'h2_turbine_tech', icon: '💧', title: '수소 터빈 개발', months: 36, reward: { money: 2000, happy: 3 }, penalty: { happy: 2 },
-    desc: '수소 경제 노선: 3년 안에 수소 터빈 테크 1단계를 개발하세요.',
-    cond: (s) => pol(s, 'hydrogen') === 'push' && (s.tech.h2crack || 0) >= 1 && (s.tech.h2turbine || 0) === 0,
-    check: (s) => (s.tech.h2turbine || 0) >= 1,
-    progress: (s) => (s.tech.h2turbine || 0) >= 1 ? '완료' : (s.techBusy && s.techBusy.h2turbine ? '연구 중' : '미개발'),
   },
   {
     id: 'export_income', icon: '💵', title: '전력 수출 수입 확보', months: 36, reward: { money: 2000 }, penalty: { happy: 2 },
@@ -293,8 +277,8 @@ QUESTS.push(
     progress: (s, q) => fmt(firmCapOf(s)) + ' / ' + fmt(q.base.firm * 1.3) + ' MW',
   },
   {
-    id: 'rd200', icon: '🔬', title: 'R&D 수준 200', months: 48, reward: { money: 2500, happy: 3 }, penalty: { happy: 2 },
-    desc: 'R&D 노선을 정했으니 연구소를 크게 키우세요. 3단계 연구가 가까워집니다.',
+    id: 'rd200', icon: '🔬', title: '연구소 규모 200', months: 48, reward: { money: 2500, happy: 3 }, penalty: { happy: 2 },
+    desc: '연구소를 크게 키우세요. 더 높은 단계의 연구가 열립니다.',
     cond: (s) => !!pol(s, 'rd') && rdLevel(s) >= 100 && rdLevel(s) < 160,
     check: (s) => rdLevel(s) >= 200,
     progress: (s) => rdLevel(s) + ' / 200',
@@ -306,7 +290,7 @@ EVENTS.push(
   { id: 'dust', name: '황사·미세먼지', seasons: ['mid'], solarMult: 0.75, happyDelta: -1, weight: 0.8,
     desc: '뿌연 하늘에 태양광 발전이 25% 줄고, 국민 불만이 조금 늘어납니다.' },
   { id: 'heatdome', name: '열돔 현상', seasons: ['summer'], demandMult: 1.22, tempDelta: 8, weight: 0.4,
-    desc: '기록적인 폭염이 이어져 수요가 22% 뛰고 가스터빈 출력이 크게 떨어집니다.' },
+    desc: '기록적인 폭염이 이어져 수요가 22% 뛰고 복합발전 출력이 크게 떨어집니다.' },
   { id: 'snowstorm', name: '폭설', seasons: ['winter'], solarMult: 0.6, demandMult: 1.08, tempDelta: -4, weight: 0.7,
     desc: '눈이 패널을 덮어 태양광이 40% 줄고 난방 수요가 8% 늘어납니다.' },
   { id: 'clearSkies', name: '맑은 날 연속', seasons: ['mid'], solarMult: 1.25, weight: 0.7,
