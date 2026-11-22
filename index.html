@@ -16,7 +16,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="style.css?v=s11221406k">
+  <link rel="stylesheet" href="style.css?v=s11221417p">
 </head>
 <body>
 
@@ -51,10 +51,13 @@
     <div class="date-box">
       <span id="date-value">2030년 1월</span>
       <button id="next-month" class="primary" title="단축키: Space / Enter">이번 달 진행 ▶ <small>Space</small></button>
+      <button id="update-btn" class="ghost bgm-btn hidden" title="새 버전이 올라왔습니다. 누르면 새 버전으로 다시 불러옵니다 (진행 상황은 저장되어 이어하기로 이어집니다)">⬆<span> 새 버전</span></button>
       <button id="bgm-top" class="ghost bgm-btn" data-bgm="short" title="배경 음악 끄기">🔊<span> BGM</span></button>
+      <input id="bgm-vol-top" class="bgm-vol" type="range" min="0" max="100" step="5" value="60" data-bgm-vol aria-label="BGM 음량" title="BGM 음량">
       <details id="menu" class="menu">
         <summary title="메뉴: 요약 복사 · 용어 풀이 · 안내 다시 보기 · 사퇴 · 새 게임">☰ 메뉴</summary>
         <div class="menu-list">
+          <label class="menu-row" data-bgm-vol-row>🎵 BGM 음량 <input class="bgm-vol" type="range" min="0" max="100" step="5" value="60" data-bgm-vol aria-label="BGM 음량"></label>
           <button id="sfx-toggle" data-sfx title="효과음(버튼 · 건설 · 연구 결과) 끄기">🔔 효과음 켜짐</button>
           <button id="copy-summary" title="현재 게임 플레이 상황을 짧은 글로 클립보드에 복사합니다">📋 상황 요약 복사</button>
           <button id="glossary-open" title="SMP, 용량 요금 같은 전력 용어를 쉬운 말로 풀어 봅니다">📖 용어 풀이</button>
@@ -289,7 +292,9 @@
         <button id="continue-game" class="ghost hidden">이어하기</button>
         <button id="show-rankings" class="ghost">🏆 랭킹</button>
         <button id="bgm-start" class="ghost" data-bgm="long" title="배경 음악 끄기">🔊 BGM 켜짐</button>
+        <input class="bgm-vol" type="range" min="0" max="100" step="5" value="60" data-bgm-vol aria-label="BGM 음량" title="BGM 음량">
       </div>
+      <div class="build-id">버전 <span id="build-id">—</span></div>
       <details class="more how">
         <summary>게임 규칙 한눈에 보기</summary>
         <p>
@@ -373,22 +378,59 @@
     </div>
   </div>
 
-  <script src="map.js?v=s11221406k"></script>
-  <script src="atlas.js?v=s11221406k"></script>
-  <script src="facilities.js?v=s11221406k"></script>
-  <script src="plants.js?v=s11221406k"></script>
-  <script src="tech.js?v=s11221406k"></script>
-  <script src="events.js?v=s11221406k"></script>
-  <script src="events2.js?v=s11221406k"></script>
-  <script src="events4.js?v=s11221406k"></script>
-  <script src="tutorial.js?v=s11221406k"></script>
-  <script src="sim.js?v=s11221406k"></script>
-  <script src="ui.js?v=s11221406k"></script>
-  <script src="rankings_seed.js?v=s11221406k"></script>
-  <script src="rankdetail.js?v=s11221406k"></script>
-  <script src="main.js?v=s11221406k"></script>
-  <script src="mobile.js?v=s11221406k"></script>
-  <script src="bgm.js?v=s11221406k"></script>
-  <script src="sfx.js?v=s11221406k"></script>
+  <script src="map.js?v=s11221417p"></script>
+  <script src="atlas.js?v=s11221417p"></script>
+  <script src="facilities.js?v=s11221417p"></script>
+  <script src="plants.js?v=s11221417p"></script>
+  <script src="tech.js?v=s11221417p"></script>
+  <script src="events.js?v=s11221417p"></script>
+  <script src="events2.js?v=s11221417p"></script>
+  <script src="events4.js?v=s11221417p"></script>
+  <script src="tutorial.js?v=s11221417p"></script>
+  <script src="sim.js?v=s11221417p"></script>
+  <script src="ui.js?v=s11221417p"></script>
+  <script src="rankings_seed.js?v=s11221417p"></script>
+  <script src="rankdetail.js?v=s11221417p"></script>
+  <script src="main.js?v=s11221417p"></script>
+  <script src="mobile.js?v=s11221417p"></script>
+  <script src="bgm.js?v=s11221417p"></script>
+  <script src="sfx.js?v=s11221417p"></script>
+  <script>
+    // 새 버전 확인: 브라우저가 예전 index.html을 붙들고 있으면(GitHub Pages는 10분 동안 캐시함) 예전 게임 파일로 계속 돌아감.
+    //  접속할 때와 이 화면으로 돌아올 때 서버의 최신 버전 표시(style.css?v=...)를 받아 와서, 지금 것보다 새것이면
+    //   - 아직 게임을 시작하지 않았으면 바로 새 버전으로 다시 불러오고
+    //   - 게임 중이면 위쪽에 "새 버전" 버튼만 띄움 (누르면 다시 불러옴. 진행 상황은 달마다 저장되어 '이어하기'로 이어짐)
+    (function () {
+      var link = document.querySelector('link[rel="stylesheet"][href*="?v="]');
+      var mine = link ? (/\?v=([A-Za-z0-9]+)/.exec(link.getAttribute('href')) || [])[1] : null;
+      var label = document.getElementById('build-id');
+      if (label && mine) label.textContent = mine.replace(/^s/, '');
+      if (!mine || !window.fetch) return;
+      var lastCheck = 0, newer = null;
+      function go() {
+        try { sessionStorage.setItem('ilpp-upd', newer); } catch (e) {}
+        location.replace(location.pathname + '?u=' + newer);   // 주소가 달라져서, 붙들고 있던 예전 index.html을 쓰지 않음
+      }
+      function check() {
+        var now = Date.now();
+        if (newer || now - lastCheck < 60000) return;
+        lastCheck = now;
+        fetch('index.html?fresh=' + now, { cache: 'no-store' }).then(function (r) { return r.ok ? r.text() : ''; }).then(function (t) {
+          var m = /style\.css\?v=([A-Za-z0-9]+)/.exec(t);
+          if (!m || !(m[1] > mine)) return;   // 버전 표시는 "s월일시분" 꼴이라 글자 순서가 곧 시간 순서
+          newer = m[1];
+          var tried = null, playing = false;
+          try { tried = sessionStorage.getItem('ilpp-upd'); } catch (e) {}
+          try { playing = typeof state !== 'undefined' && !!state && !state.finished; } catch (e) {}
+          var btn = document.getElementById('update-btn');
+          if (!playing && tried !== newer) go();   // 한 버전에 한 번만 자동으로 (되풀이 방지)
+          else if (btn) { btn.classList.remove('hidden'); btn.onclick = go; }
+        }).catch(function () {});
+      }
+      check();
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
+      window.addEventListener('focus', check);
+    })();
+  </script>
 </body>
 </html>

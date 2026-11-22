@@ -1119,7 +1119,7 @@ try { const sp = localStorage.getItem('ilpp-side-pane'); if (sp && sp !== 'resea
 // 상단 메뉴: 항목을 누르거나 밖을 누르면 닫힘
 (function () {
   const menu = document.getElementById('menu'); if (!menu) return;
-  menu.querySelector('.menu-list').addEventListener('click', () => { menu.open = false; });
+  menu.querySelector('.menu-list').addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.menu-row')) return; menu.open = false; });   // 음량 막대 줄은 만져도 닫지 않음
   document.addEventListener('click', (e) => { if (menu.open && !menu.contains(e.target)) menu.open = false; });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') menu.open = false; });
 })();

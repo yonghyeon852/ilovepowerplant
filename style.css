@@ -162,6 +162,15 @@ details.more p { margin-top: 6px; }
 /* 배경 음악 켜기/끄기 버튼 (위쪽 막대 · 시작 화면). 꺼져 있으면 흐리게 */
 .bgm-btn { padding: 9px 12px; font-size: 0.86rem; }
 [data-bgm].off { opacity: 0.6; }
+/* BGM 음량 막대 (위쪽 막대 · 메뉴 · 시작 화면). 음량을 못 바꾸는 기기(아이폰)에서는 숨김 */
+.bgm-vol { width: 84px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; vertical-align: middle; }
+#bgm-vol-top { width: 72px; margin-left: -4px; }
+.menu-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; font-size: 0.88rem; white-space: nowrap; }
+.menu-row .bgm-vol { flex: 1 1 auto; max-width: 110px; }
+body.no-bgm-vol .bgm-vol, body.no-bgm-vol .menu-row[data-bgm-vol-row] { display: none; }
+@media (max-width: 1240px) { #bgm-vol-top { display: none; } }
+#update-btn { color: var(--good); border-color: var(--good); }
+.build-id { margin-top: 8px; font-size: 0.72rem; color: var(--muted); opacity: 0.7; text-align: center; }
 
 .menu { position: relative; }
 .menu summary { list-style: none; cursor: pointer; padding: 9px 12px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); color: var(--muted); font-size: 0.86rem; }
@@ -462,7 +471,7 @@ canvas#forecast-chart, canvas#report-chart { display: block; width: 100%; height
 .mode:hover { border-color: var(--accent); }
 .mode strong { font-size: 1rem; }
 .mode span { font-size: 0.82rem; color: var(--muted); line-height: 1.5; }
-.start-links { display: flex; justify-content: center; gap: 8px; margin-top: 10px; }
+.start-links { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; }
 .how { text-align: left; margin-top: 14px; }
 .how p { font-size: 0.8rem; color: var(--muted); line-height: 1.7; }
 
@@ -916,6 +925,7 @@ body.mobile #next-month small, body.mobile #report-close small { display: none; 
 body.mobile #menu summary { padding: 8px 10px; }
 body.mobile .bgm-btn { padding: 8px 10px; }
 body.mobile .bgm-btn span { display: none; }
+body.mobile #bgm-vol-top { display: none; }
 body.mobile #menu .menu-list button { padding: 10px 12px; }
 /* 본문: 지도가 남는 높이를 다 쓰고, 그 아래에 칸 하나 + 탭 줄 */
 body.mobile #tab-map { display: flex; flex-direction: column; gap: 6px; padding: 6px 6px 0; overflow: hidden; }

@@ -8,11 +8,19 @@
 //      data-bgm="long"  → "🔊 BGM 켜짐" / "🔇 BGM 꺼짐" (타이틀 화면 · 시작 화면)
 //      data-bgm="short" → "🔊 BGM" / "🔇 BGM" (게임 화면 위쪽 막대. 휴대폰에서는 그림만)
 //    버튼은 "지금 소리가 나는지"를 보여 줌: 켜 두었어도 아직 브라우저에 막혀 있으면 꺼짐으로 보이고, 누르면 켜짐
+//  - 음량: data-bgm-vol 속성이 붙은 막대(0~100)는 모두 BGM 음량 막대. 브라우저에 기억 (기본 60).
+//      아이폰은 웹페이지가 음량을 바꿀 수 없어(애플 제한) 막대를 숨김 → 기기의 음량 버튼으로 조절
 // ------------------------------------------------------------
 (function () {
   const KEY = 'ilpp-bgm';
   const SRC = 'assets/audio/bgm.aac?v=1';
-  const VOLUME = 0.6;
+  const VOL_KEY = 'ilpp-bgm-vol';
+  let vol = 0.6;         // BGM 음량 (0~1)
+  try { const v = parseFloat(localStorage.getItem(VOL_KEY)); if (v >= 0 && v <= 1) vol = v; } catch (e) { /* 기본값 */ }
+  // 이 기기에서 웹페이지가 음량을 바꿀 수 있는지 (아이폰은 항상 1로 고정됨)
+  let canVol = true;
+  try { const probe = new Audio(); probe.volume = 0.5; canVol = Math.abs(probe.volume - 0.5) < 0.01; } catch (e) { canVol = false; }
+  if (!canVol) document.body.classList.add('no-bgm-vol');
 
   let on = true;         // 사용자가 고른 설정 (켜짐/꺼짐)
   let blocked = true;    // 아직 소리를 못 내는 상태 (첫 입력 전). 재생이 한 번 시작되면 false
@@ -24,7 +32,7 @@
       audio = new Audio();
       audio.loop = true;
       audio.preload = 'auto';
-      audio.volume = VOLUME;
+      audio.volume = vol;
       audio.src = SRC;
     }
     return audio;
@@ -47,6 +55,8 @@
       b.title = live ? '배경 음악 끄기' : '배경 음악 켜기';
       b.innerHTML = b.dataset.bgm === 'long' ? (live ? '🔊 BGM 켜짐' : '🔇 BGM 꺼짐') : (live ? '🔊' : '🔇') + '<span> BGM</span>';
     });
+    const pct = Math.round(vol * 100);
+    document.querySelectorAll('[data-bgm-vol]').forEach((i) => { if (String(i.value) !== String(pct)) i.value = pct; i.title = 'BGM 음량 ' + pct + '%'; });
   }
   function set(v) {
     on = !!v;
@@ -54,6 +64,21 @@
     if (on) tryPlay(true); else if (audio) audio.pause();
     sync();
   }
+  // 음량 바꾸기. 막대를 움직이면(byUser) 꺼져 있던 음악도 켬
+  function setVol(v, byUser) {
+    vol = Math.max(0, Math.min(1, +v || 0));
+    try { localStorage.setItem(VOL_KEY, String(vol)); } catch (e) { /* 기억만 못 함 */ }
+    if (audio) audio.volume = vol;
+    if (byUser && vol > 0 && !on) set(true);
+    else if (byUser && on && blocked) tryPlay(true);
+    sync();
+  }
+  window.bgmSetVolume = setVol;
+  window.bgmVolume = () => vol;
+  document.addEventListener('input', (e) => {
+    const i = e.target && e.target.closest ? e.target.closest('[data-bgm-vol]') : null;
+    if (i) setVol(i.value / 100, true);
+  });
   window.bgmSet = set;
   window.bgmIsOn = () => on && !blocked;
 
