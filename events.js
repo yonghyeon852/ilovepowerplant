@@ -11,6 +11,9 @@
 
 // ---------- 지속 효과 ----------
 function monthIdxOf(state) { return state.year * 12 + state.month; }
+// 목표의 남은 기간 문구. 기한 달이 지났는데 아직 진행 중이면(left 0 이하) 이번 달 결산이 마지막 판정임
+//  (판정은 결산 때 하고, 기한을 넘긴 달의 결산에서 실패로 처리됨 → 그 달에 "0개월 남음"이라고 나오던 것을 바로잡음)
+function monthsLeftText(left) { return left <= 0 ? '이번 달 결산에서 판정' : left + '개월 남음'; }
 
 function addEffect(state, eff, months) {
   if (!state.effects) state.effects = [];

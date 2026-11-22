@@ -884,6 +884,7 @@ canvas#forecast-chart, canvas#report-chart { display: block; width: 100%; height
 .rk .c.warn, .rk .c.busy { color: var(--warn); }
 .rk .e { grid-area: e; display: none; min-width: 0; color: var(--gold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rk .e.busy { color: var(--muted); }
+.rk .e small { color: var(--muted); margin-right: 3px; }
 .rk .e.done { color: var(--muted); }
 .rk > button { grid-area: b; padding: 3px 8px; white-space: nowrap; }
 .rd-dock details.more { margin-top: 4px; }

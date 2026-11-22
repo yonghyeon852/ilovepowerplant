@@ -558,7 +558,7 @@ function renderGuide(state) {
   const main = pledges.find((x) => x.def.term2) || pledges.find((x) => x.def.policy === 'energy') || pledges.filter((x) => x.q.status === 'active').sort((a, b) => a.q.deadline - b.q.deadline)[0] || pledges[0];
   if (main) {
     const left = main.q.deadline - now + 1, stt = main.q.status;
-    const st = stt === 'done' ? ['good', '지킴 · 민심 +' + (main.def.kept || ECON.moodPledgeKept)] : stt === 'failed' ? ['bad', '기한 지남 · 민심 −' + (main.def.broken || ECON.moodPledgeBroken)] : stt === 'late' ? ['muted', '늦게 지킴'] : [left <= 12 ? 'bad' : 'muted', dur(left) + ' 남음'];
+    const st = stt === 'done' ? ['good', '지킴 · 민심 +' + (main.def.kept || ECON.moodPledgeKept)] : stt === 'failed' ? ['bad', '기한 지남 · 민심 −' + (main.def.broken || ECON.moodPledgeBroken)] : stt === 'late' ? ['muted', '늦게 지킴'] : [left <= 12 ? 'bad' : 'muted', left <= 0 ? '이번 달 결산에서 판정' : dur(left) + ' 남음'];
     html += '<div class="g-pledge" title="' + esc(main.def.short) + '"><div class="t"><span>' + (main.def.term2 ? '🗳 재선 공약 · ' : '📜 ') + main.def.title.replace('재선 공약: ', '').replace('공약: ', '') + '</span><small class="' + st[0] + '">' + st[1] + '</small></div>' +
       (stt === 'active' || stt === 'failed' ? '<div class="p">' + main.def.progress(state, main.q) + '</div>' : '') + '</div>';
   }
@@ -567,7 +567,7 @@ function renderGuide(state) {
   if (guideSupply) items.push({ cls: guideSupply.cls, mark: '⚡', name: guideSupply.name, tip: guideSupply.tip });
   const urgent = (state.quests || []).filter((q) => q.status === 'active' && (!main || q !== main.q)).map((q) => ({ q, def: questById(q.id), left: q.deadline - now + 1 }))
     .filter((x) => x.def && x.left <= (x.def.pledge || x.q.id === 'reelection' ? 12 : 3)).sort((a, b) => a.left - b.left)[0];
-  if (urgent) items.push({ cls: 'warn', mark: '⏳', name: urgent.def.title.replace('공약: ', ''), tip: urgent.left + '개월 남음', title: urgent.def.desc });
+  if (urgent) items.push({ cls: 'warn', mark: '⏳', name: urgent.def.title.replace('공약: ', ''), tip: monthsLeftText(urgent.left), title: urgent.def.desc });
   // 태양광·풍력이 한쪽으로 쏠렸으면 알림 (둘은 시간대와 계절이 반대라 섞어야 고르게 채워짐). 평균 출력으로 견줌
   {
     const alive = (b) => b.status !== 'retired' && b.status !== 'demolishing';
@@ -590,7 +590,7 @@ function renderGuide(state) {
   { const rw = reserveSurcharge(state); if (rw >= 2) items.push({ cls: 'warn', mark: '🏭', name: '설비 과잉 · 요금 +' + fmt(rw) + '원', tip: '새 도시로 수요 늘리기 · 낡은 설비 철거', title: '조절 설비(복합발전·석탄·원전)가 한 해 최대 수요의 ' + fmt(reserveYear(state) * 100) + '%입니다. ' + fmt(ECON.reserveFree * 100) + '%를 넘는 만큼 남는 설비의 유지비가 전기요금에 얹힙니다.' }); }
   // 점수가 낮은 분야(절반 아래)와, 분야 안에서 크게 깎이는 것
   const pillarsNow = (state.mood && state.mood.pillars) || [];
-  for (const p of pillarsNow.filter((p) => p.score < p.max * 0.4).sort((a, b) => a.score - b.score)) items.push({ cls: p.score < p.max * 0.2 ? 'bad' : 'warn', mark: fmt(p.score) + '/' + p.max, name: p.name, tip: GUIDE_TIP[p.key] || '', title: p.parts.map((x) => x.label).join('\n') });
+  for (const p of pillarsNow.filter((p) => p.score < p.max * 0.4).sort((a, b) => a.score - b.score)) items.push({ cls: p.score < p.max * 0.2 ? 'bad' : 'warn', mark: fmt(p.score, 1) + '/' + p.max, name: p.name, tip: GUIDE_TIP[p.key] || '', title: p.parts.map((x) => x.label).join('\n') });
   for (const p of pillarsNow) for (const x of p.parts) {
     const k = x.key.split(':')[0];
     if (k === 'housing' && x.value < ECON.moodHousingMax * 0.7) items.push({ cls: 'warn', mark: '🏙', name: '도시가 빽빽함 (주거 ' + fmt(x.value, 1) + '/' + ECON.moodHousingMax + ')', tip: GUIDE_TIP.housing, title: x.label });
@@ -1025,7 +1025,7 @@ function renderQuests(state) {
     const left = q.deadline - now + 1;
     // 한 줄 요약: 제목 · 진행 · 남은 기간. 설명·보상·벌칙은 마우스를 올리면(툴팁)
     const tip = (def.desc + '\n보상 ' + rewardText(def) + ' · 실패 시 ' + penaltyText(def)).replace(/"/g, '&quot;');
-    html += '<div class="quest" title="' + tip + '"><div class="t"><span>' + def.icon + ' ' + def.title + '</span><span class="due' + (left <= 3 ? ' bad' : '') + '">' + dur(left) + '</span></div>' +
+    html += '<div class="quest" title="' + tip + '"><div class="t"><span>' + def.icon + ' ' + def.title + '</span><span class="due' + (left <= 3 ? ' bad' : '') + '">' + (left <= 0 ? '이번 달 판정' : dur(left)) + '</span></div>' +
       '<div class="p"><b>' + def.progress(state, q) + '</b><span class="rw">' + rewardText(def) + '</span></div></div>';
   }
   if (!html) html = '<p class="muted" style="font-size:0.8rem">지금은 목표가 없습니다. 새 목표는 몇 달 안에 주어집니다.</p>';
@@ -1765,7 +1765,7 @@ function renderTechRdPanel(state) {
       const tier = tree.tiers[lvl], need = techGate(state, key), p = techSuccessProb(state, key), c = techCost(state, key);
       const dis = need > 0 || full || state.money < c || state.finished;
       const why = need > 0 ? '연구소 규모 ' + need + ' 필요' : full ? '동시 연구 한도' : state.money < c ? '자금 부족' : '';
-      eff = '<span class="e" title="' + (lvl + 1) + '단계 · ' + tier.name.replace(/"/g, '&quot;') + ': ' + tier.effect.replace(/"/g, '&quot;') + '">' + tier.effect + '</span>';
+      eff = '<span class="e" title="' + (lvl + 1) + '단계 · ' + tier.name.replace(/"/g, '&quot;') + ': ' + tier.effect.replace(/"/g, '&quot;') + '"><small>다음 ' + (lvl + 1) + '단계</small> ' + tier.effect + '</span>';
       const tip = ('다음 ' + (lvl + 1) + '단계 · ' + tier.name + ': ' + tier.effect + ' (' + fmt(c) + '억 · 성공 ' + pct(p) + ' · ' + TECH_RESEARCH_MONTHS + '개월 뒤 결과' + (why ? ' · ' + why : '') + ')').replace(/"/g, '&quot;');
       rowTip = tip;
       cost = '<span class="c' + (need > 0 || full ? ' warn' : '') + '">' + (need > 0 ? '규모 ' + need + ' 필요' : fmt(c) + '억 · ' + pct(p)) + '</span>';
