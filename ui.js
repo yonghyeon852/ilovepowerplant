@@ -293,7 +293,7 @@ function renderTopbar(state) {
     const tg = state.mood && state.mood.target !== undefined ? state.mood.target : null;
     if (tg === null) { tgEl.textContent = ''; tgEl.className = 'happy-target'; }
     else { const dd = tg - hp; tgEl.textContent = (Math.abs(dd) < 1 ? '→ ' : dd > 0 ? '▲ ' : '▼ ') + fmt(tg); tgEl.className = 'happy-target ' + (Math.abs(dd) < 1 ? '' : dd > 0 ? 'up' : 'down'); }
-    document.querySelector('.happy').title = '민심 (' + ECON.happinessGameOver + ' 이하가 되면 탄핵). 옆의 작은 숫자는 예상 민심입니다. 다섯 분야(각 ' + ECON.moodPillarMax + '점)의 합이고, 민심은 매달 그 값 쪽으로 차이의 ' + Math.round(ECON.moodPull * 100) + '%만큼 움직입니다.' +
+    document.querySelector('.happy').title = '민심 (' + ECON.happinessGameOver + ' 이하가 되면 탄핵). 옆의 작은 숫자는 예상 민심입니다. 다섯 분야(각 ' + ECON.moodPillarMax + '점)의 합이고, 민심은 매달 그 값 쪽으로 움직입니다 (내려갈 때는 차이의 ' + Math.round(ECON.moodPull * 100) + '%, 올라갈 때는 ' + Math.round(ECON.moodPullUp * 100) + '%).' +
       (state.mood && state.mood.pillars ? state.mood.pillars.map((p) => '\n' + p.name + '  ' + p.score + ' / ' + p.max).join('') + (state.mood.extras || []).map((x) => '\n' + x.label + '  ' + (x.value > 0 ? '+' : '') + x.value).join('') : '');
   }
 
@@ -615,7 +615,7 @@ function renderGuide(state) {
 function renderSelected(state) {
   const root = document.getElementById('selected-info');
   const b = state.buildings.find((x) => x.id === state.selectedId);
-  if (!b) { root.innerHTML = '<p class="muted">지도에서 설비를 클릭하세요.</p>'; return; }
+  if (!b) { root.innerHTML = '<p class="muted">지도에서 설비를 누르면 여기에 정보가 나옵니다.</p>'; return; }
   const p = PLANTS[b.type];
   const st = plantStats(state, b.type);
   const loss = plantLoss(state, b);
@@ -922,7 +922,7 @@ function renderReport(report) {
     moodRows += row('예상 민심 (다섯 분야의 합' + ((hp.extras || []).length ? ' + 여론' : '') + ')', fmt(hp.target, 1), 'total');
     moodRows += '<h3 style="margin-top:12px">이번 달 민심</h3>';
     moodRows += row('지난달', fmt(hp.before, 1));
-    moodRows += row('예상 민심 쪽으로 이동 (차이의 ' + fmt(ECON.moodPull * 100) + '%)', moodSign(hp.pull !== undefined ? hp.pull : hp.after - hp.before), (hp.pull || 0) >= 0 ? 'good' : 'bad');
+    moodRows += row('예상 민심 쪽으로 이동 (' + ((hp.pull || 0) > 0 ? '오를 때는 차이의 ' + fmt(ECON.moodPullUp * 100) : '내릴 때는 차이의 ' + fmt(ECON.moodPull * 100)) + '%)', moodSign(hp.pull !== undefined ? hp.pull : hp.after - hp.before), (hp.pull || 0) >= 0 ? 'good' : 'bad');
     if (questD) moodRows += row('목표·공약 결과 (여론으로 남아 서서히 옅어짐)', moodSign(questD), questD > 0 ? 'good' : 'bad');
     moodRows += row('이번 달', fmt(hpEnd, 1), 'total ' + (hpEnd < 40 ? 'bad' : hpEnd >= 65 ? 'good' : ''));
     if (report.score) moodRows += row('국정운영 점수: 이번 달 민심만큼 쌓임' + (report.score.weight > 1 ? ' (11년 차부터 ' + report.score.weight + '배)' : ''), '+' + fmt(report.score.gain, 1) + '점 → ' + fmt(report.score.total) + '점');

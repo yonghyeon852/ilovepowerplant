@@ -16,7 +16,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="style.css?v=s11221609h">
+  <link rel="stylesheet" href="style.css?v=s11222144i">
 </head>
 <body>
 
@@ -79,9 +79,10 @@
       </div>
 
       <div id="subtab-plants">
+        <p class="tip m-only">카드를 누르면 지도에 놓을 자리가 나타납니다. 도시 안에는 지을 수 없어요.</p>
         <div id="palette-cards"></div>
-        <details class="more"><summary>조작법</summary>
-          <p class="tip">카드를 끌어 비용과 입지를 확인하고, 원하는 곳에 놓아 착공하세요.</p>
+        <details class="more d-only"><summary>조작법</summary>
+          <p class="tip">카드를 끌어 비용과 입지를 확인하고, 원하는 곳에 놓아 착공하세요. 도시 안에는 지을 수 없습니다.</p>
           <p class="tip"><b>Space</b> 달 진행 · <b>Esc</b> 선택 해제 · <b>지도 끌기</b> 이동 · <b>마우스 휠</b> 확대·축소 · <b>방향키/WASD</b> 이동</p>
         </details>
       </div>
@@ -210,7 +211,7 @@
         <div class="side-pane hidden" data-pane="fleet">
           <section class="panel" id="selected-panel">
             <h2>선택한 설비</h2>
-            <div id="selected-info"><p class="muted">지도에서 설비를 클릭하세요.</p></div>
+            <div id="selected-info"><p class="muted">지도에서 설비를 누르면 여기에 정보가 나옵니다.</p></div>
           </section>
           <section class="panel">
             <h2>설비 현황</h2>
@@ -224,7 +225,12 @@
       </div>
     </aside>
 
-    <!-- 모바일 전용: 아래 탭 줄 · 설비 놓을 자리 확정 줄 (mobile.js) -->
+    <!-- 모바일 전용: 아래 칸의 머리줄(지금 보는 칸 · 크게 보기 · 접기) · 아래 탭 줄 · 설비 놓을 자리 확정 줄 (mobile.js) -->
+    <div id="msheet-bar">
+      <b id="msheet-title"></b>
+      <button type="button" class="ghost" data-ms="size">⤢ 크게 보기</button>
+      <button type="button" class="ghost" data-ms="close" aria-label="칸을 접어 지도를 넓게">▾ 접기</button>
+    </div>
     <nav id="mnav" aria-label="화면 고르기">
       <button data-msec="build"><i>🏗</i><span>건설</span></button>
       <button data-msec="research"><i>🔬</i><span>연구</span></button>
@@ -258,6 +264,8 @@
 
   <!-- 연구 결과 알림: 달이 넘어갈 때 지도 아래 가운데에 잠깐 뜸 (위치는 ui.js showResearchToast가 지도 칸에 맞춤) -->
   <div id="rd-toast" aria-live="polite"></div>
+  <!-- 모바일: 마우스를 올려야 나오던 설명을 눌러서 볼 때 뜨는 말풍선 (mobile.js) -->
+  <div id="mtip" class="hidden"></div>
 
   <!-- ===== 시작 화면 ===== -->
   <!-- 타이틀 화면: 접속하자마자 먼저 보이고, 아무 키나 누르거나 클릭하면 아래 시작 화면으로 넘어감. 그림을 못 불러오면 나타나지 않음.
@@ -281,7 +289,7 @@
       <div class="mode-list">
         <button class="mode" data-mode="normal">
           <strong>일반 모드 (20년 임기)</strong>
-          <span>20년 동안 나라의 전력망을 운영합니다. 목표는 하나, <b>민심</b>를 끝까지 높게 지키는 것입니다.</span>
+          <span>20년 동안 나라의 전력망을 운영합니다. 목표는 하나, <b>민심</b>을 끝까지 높게 지키는 것입니다.</span>
         </button>
         <button class="mode" data-mode="tutorial">
           <strong>👩‍💼 튜토리얼</strong>
@@ -300,7 +308,7 @@
         <p>
           · 매달 그달의 민심만큼 국정운영 점수가 쌓입니다(11년 차부터 2배). 10년 차에는 재선 선거가 있고, 그 1년 전에 <b>재선 공약</b>을 발표합니다. 과감한 약속일수록 선거에는 도움이 되지만 지키기 어렵고, 못 지키면 크게 깎입니다.<br>
           · 민심은 <b>다섯 분야</b>(전력 공급 · 전기 요금 · 환경 · 도시·생활 · 미래·신뢰, 각 20점)의 합입니다. 민심이 10 이하로 떨어지면 탄핵, 빚이 한도를 넘으면 국가 부도로 끝납니다.<br>
-          · 설비를 지어 도시에 전기를 팝니다. 수요를 못 채우면 정전, 탄소를 배출하면 탄소세를 냅니다.<br>
+          · 설비를 지어 도시에 전기를 팝니다(도시 안에는 지을 수 없고, 멀수록 송전 손실이 큽니다). 수요를 못 채우면 정전, 탄소를 배출하면 탄소세를 냅니다.<br>
           · 1년 차에 고르는 <b>에너지 정책</b>(친원전 · 화력 중심 · 재생에너지 중심 · 중립)과 그 <b>공약</b>에 맞춰 설비와 테크를 키우세요.<br>
           · <b>공약</b>은 임기 후반까지 챙겨야 합니다. 4년마다 점검받는 공약(정전 없음 · 싼 전기 · 고른 국토)과 18년 차 말에 달성 정도로 평가받는 공약(전환 · 성장 · 연구)이 있고, 지켰을 때와 어겼을 때의 민심 차이가 큽니다.<br>
           · 정책은 <b>중점</b>을 정할 뿐입니다. 어느 정책이든 설비를 <b>섞어 지어야</b> 합니다. 화력은 쉽지만 환경 점수를 거의 못 받아 고점이 낮고, 높은 점수는 재생에너지·원자력·전력 수출을 잘 관리해야 나옵니다.<br>
@@ -379,23 +387,23 @@
     </div>
   </div>
 
-  <script src="map.js?v=s11221609h"></script>
-  <script src="atlas.js?v=s11221609h"></script>
-  <script src="facilities.js?v=s11221609h"></script>
-  <script src="plants.js?v=s11221609h"></script>
-  <script src="tech.js?v=s11221609h"></script>
-  <script src="events.js?v=s11221609h"></script>
-  <script src="events2.js?v=s11221609h"></script>
-  <script src="events4.js?v=s11221609h"></script>
-  <script src="tutorial.js?v=s11221609h"></script>
-  <script src="sim.js?v=s11221609h"></script>
-  <script src="ui.js?v=s11221609h"></script>
-  <script src="rankings_seed.js?v=s11221609h"></script>
-  <script src="rankdetail.js?v=s11221609h"></script>
-  <script src="main.js?v=s11221609h"></script>
-  <script src="mobile.js?v=s11221609h"></script>
-  <script src="bgm.js?v=s11221609h"></script>
-  <script src="sfx.js?v=s11221609h"></script>
+  <script src="map.js?v=s11222144i"></script>
+  <script src="atlas.js?v=s11222144i"></script>
+  <script src="facilities.js?v=s11222144i"></script>
+  <script src="plants.js?v=s11222144i"></script>
+  <script src="tech.js?v=s11222144i"></script>
+  <script src="events.js?v=s11222144i"></script>
+  <script src="events2.js?v=s11222144i"></script>
+  <script src="events4.js?v=s11222144i"></script>
+  <script src="tutorial.js?v=s11222144i"></script>
+  <script src="sim.js?v=s11222144i"></script>
+  <script src="ui.js?v=s11222144i"></script>
+  <script src="rankings_seed.js?v=s11222144i"></script>
+  <script src="rankdetail.js?v=s11222144i"></script>
+  <script src="main.js?v=s11222144i"></script>
+  <script src="mobile.js?v=s11222144i"></script>
+  <script src="bgm.js?v=s11222144i"></script>
+  <script src="sfx.js?v=s11222144i"></script>
   <script>
     // 새 버전 확인: 브라우저가 예전 index.html을 붙들고 있으면(GitHub Pages는 10분 동안 캐시함) 예전 게임 파일로 계속 돌아감.
     //  접속할 때와 이 화면으로 돌아올 때 서버의 최신 버전 표시(style.css?v=...)를 받아 와서, 지금 것보다 새것이면

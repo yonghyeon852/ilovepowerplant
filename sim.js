@@ -432,7 +432,7 @@ function housingScore(density) {
 // ------------------------------------------------------------
 // 이번 달 민심: 다섯 분야 × 20점 성적표
 //  pillars: 분야별 점수(0~20)와 그 내역(parts). 예상 민심 = 다섯 분야의 합 + 여론 (− 원전 사고의 상처)
-//  민심은 예상 민심 쪽으로 매달 차이의 moodPull만큼 움직임
+//  민심은 예상 민심 쪽으로 매달 움직임: 내려갈 때는 차이의 moodPull, 올라갈 때는 moodPullUp (잃기는 쉽고 되찾기는 더딤)
 //  한 달에 한 번만 호출됨 (정전으로 깎인 점수 state.mood.powerLoss와 여론 state.mood.buzz를 갱신함)
 // ------------------------------------------------------------
 function startCityCount(state) { return (state && state.startCities) || 3; }   // 시작할 때 있던 도시 수 (예전 저장본은 3곳)
@@ -459,7 +459,7 @@ function happinessChange(state, report) {
 
   // ① 전력 공급: 정전이 없으면 만점.
   //    정전이 난 달: 전기가 끊긴 1시간대마다 −moodPowerPerHour (주파수 사고가 낀 시간대는 1.5배). 0점 밑으로는 쌓이지 않음
-  //    정전이 없는 달: 깎였던 점수가 moodPowerRecover씩 돌아옴 → 아무리 크게 났어도 넉 달 동안 정전이 없으면 만점
+  //    정전이 없는 달: 깎였던 점수가 moodPowerRecover씩 돌아옴 (작은 정전은 한 달, 0점까지 떨어졌으면 일곱 달)
   {
     const perH = ECON.moodPowerPerHour, rec = ECON.moodPowerRecover;
     const prev = clamp(state.mood.powerLoss !== undefined ? state.mood.powerLoss : (state.mood.outage || 0) * perH, 0, P);   // 예전 저장분(정전 기억)은 점수로 바꿔 이어감
@@ -617,7 +617,8 @@ function happinessChange(state, report) {
 
   const sumP = pillars.reduce((s, p) => s + p.score, 0), sumX = extras.reduce((s, p) => s + p.value, 0);
   const target = clamp(sumP + sumX, 0, 100);
-  const pull = Math.round((target - state.happiness) * ECON.moodPull * 10) / 10;
+  const gap = target - state.happiness;
+  const pull = Math.round(gap * (gap > 0 ? (ECON.moodPullUp || ECON.moodPull) : ECON.moodPull) * 10) / 10;   // 오를 때는 더디게
   // factors: 예전 화면·도구가 쓰던 낱낱의 목록 (분야 이름을 달아 둠)
   const factors = [];
   for (const pl of pillars) for (const p of pl.parts) factors.push({ key: p.key, label: p.label, value: p.value, pillar: pl.key });

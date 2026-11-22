@@ -704,7 +704,8 @@ function canBuild(type, col, row) {
   const cells = footprintCells(type, col, row);
   if (!plantUnlocked(state, type)) return { ok: false, reason: '테크트리에서 먼저 개발해야 합니다' };
 
-  if (p.kind === 'solar' && overlapsCity(type, col, row)) return { ok: false, reason: '태양광은 도시 안에 지을 수 없습니다 (도시 밖 땅에 지으세요)' };
+  // 2026-11-22: 도시 안에는 어떤 설비도 지을 수 없음 (예전에는 태양광만 막았음). 그 전에 지어 둔 것은 그대로 둠
+  if (overlapsCity(type, col, row)) return { ok: false, reason: '도시 안에는 설비를 지을 수 없습니다 (도시 밖 땅에 지으세요)' };
   const terrain = p.terrain.slice();
   if (p.kind === 'wind' && m.windOnSea) terrain.push(SEA);
 
@@ -826,7 +827,7 @@ function startCityDraft() {
   if (state.finished) return;
   state.cityDraft = { tiles: [] };
   drag = null;
-  showMessage('지도의 땅 칸을 클릭·드래그해서 ' + ECON.cityTiles + '칸을 칠하세요', 3000);
+  showMessage((typeof isMobile === 'function' && isMobile()) ? '손가락으로 땅을 문질러 ' + ECON.cityTiles + '칸을 칠하세요 · 지도 이동과 확대는 두 손가락으로' : '지도의 땅 칸을 클릭·드래그해서 ' + ECON.cityTiles + '칸을 칠하세요', 3500);
   renderAll();
 }
 
@@ -853,7 +854,7 @@ function paintDraft(col, row, mode) {
   else {
     if (idx >= 0) return;
     if (!draftTileOk(col, row)) { showMessage('✕ 땅이고, 설비·다른 도시와 겹치지 않는 칸이어야 합니다'); return; }
-    if (d.tiles.length >= ECON.cityTiles) { showMessage('✕ ' + ECON.cityTiles + '칸을 모두 칠했습니다. 지우려면 칠한 칸을 다시 클릭하세요'); return; }
+    if (d.tiles.length >= ECON.cityTiles) { showMessage('✕ ' + ECON.cityTiles + '칸을 모두 칠했습니다. 지우려면 칠한 칸을 다시 누르세요'); return; }
     d.tiles.push({ col, row });
   }
   document.getElementById('city-count').textContent = d.tiles.length;
@@ -1253,10 +1254,7 @@ document.addEventListener('pointermove', (e) => {
       tooltipEl.innerHTML = '<b>' + p.name + '</b> · ' + fmt(plantStats(state, b.type).capacity) + 'MW<br>' + st +
         (p.isLink ? '' : ' · 손실 ' + fmt(plantLoss(state, b) * 100) + '% · 수명 ' + fmt(Math.max(0, plantLifeMonths(b.type) - b.age) / 12, 1) + '년');
     } else if (city) {
-      const density = cityDensity(city);
-      tooltipEl.innerHTML = '<b>' + city.name + '</b> (' + city.tiles.length + '칸)<br>인구 ' + fmt(city.pop) + '만 · 칸당 ' + density.toFixed(2) + '만' +
-        (density > ECON.densityLimit ? ' <span class="bad">과밀</span>' : '') + '<br><span class="muted">최대 수요 약 ' +
-        fmt(city.pop * perCapitaNow(state) * peakMultOf(state.month)) + 'MW</span>';
+      tooltipEl.innerHTML = cityTipHtml(city);
     } else { tooltipEl.style.display = 'none'; return; }
     const rect = boardEl.getBoundingClientRect();
     tooltipEl.style.display = 'block';
@@ -1265,6 +1263,28 @@ document.addEventListener('pointermove', (e) => {
   } else tooltipEl.style.display = 'none';
 });
 
+// 도시 한 곳의 요약 (마우스를 올렸을 때 · 손가락으로 눌렀을 때)
+function cityTipHtml(city) {
+  const density = cityDensity(city);
+  return '<b>' + city.name + '</b> (' + city.tiles.length + '칸)<br>인구 ' + fmt(city.pop) + '만 · 칸당 ' + density.toFixed(2) + '만' +
+    (density > ECON.densityLimit ? ' <span class="bad">과밀</span>' : '') + '<br><span class="muted">최대 수요 약 ' +
+    fmt(city.pop * perCapitaNow(state) * peakMultOf(state.month)) + 'MW</span>';
+}
+// 누른 자리에서 화면 거리 px 안에 있는 가장 가까운 설비 (손가락으로 작은 설비를 살짝 빗나가게 눌렀을 때)
+function buildingNear(clientX, clientY, px) {
+  const rect = canvas.getBoundingClientRect();
+  const ts = TILE * zoomOf() * rect.width / canvas.width;   // 한 칸의 화면 크기
+  let best = null, bestD = px;
+  for (const b of state.buildings) {
+    const p = PLANTS[b.type];
+    const x0 = rect.left + (b.col - state.view.col) * ts, y0 = rect.top + (b.row - state.view.row) * ts;
+    const dx = Math.max(x0 - clientX, 0, clientX - (x0 + p.width * ts)), dy = Math.max(y0 - clientY, 0, clientY - (y0 + p.height * ts));
+    const d = Math.hypot(dx, dy);
+    if (d < bestD) { best = b; bestD = d; }
+  }
+  return best;
+}
+let tipTimer = null;
 document.addEventListener('pointerup', (e) => {
   if (!state) return;
   if (panStart) { panStart = null; pressPos = null; document.body.style.cursor = ''; return; }
@@ -1290,13 +1310,27 @@ document.addEventListener('pointerup', (e) => {
 
   if (pressPos && e.target === canvas) {
     const moved = Math.abs(e.clientX - pressPos.x) + Math.abs(e.clientY - pressPos.y);
-    if (moved < 6) {
+    const touch = e.pointerType === 'touch';
+    if (moved < (touch ? 13 : 6)) {   // 손가락은 누르기만 해도 조금 흔들림 (그 이상 움직이면 지도 이동)
       const cell = pointToCell(e.clientX, e.clientY, null);
-      const b = cell.col !== null ? buildingAt(cell.col, cell.row) : null;
+      let b = cell.col !== null ? buildingAt(cell.col, cell.row) : null;
+      if (!b && touch) b = buildingNear(e.clientX, e.clientY, 20);   // 작은 설비를 살짝 빗나가게 눌러도 고름
       state.selectedId = b ? b.id : null;
       if (b && typeof showSidePane === 'function') showSidePane('fleet');   // 설비를 누르면 오른쪽 "설비" 탭에 정보가 뜸
       render();
       renderSelected(state);
+      // 손가락에는 "올려 두기"가 없으므로, 도시를 누르면 그 도시의 정보를 잠깐 띄움
+      const city = !b && touch && cell.col !== null ? cityAt(cell.col, cell.row) : null;
+      clearTimeout(tipTimer);
+      if (city) {
+        const rect = boardEl.getBoundingClientRect();
+        tooltipEl.innerHTML = cityTipHtml(city);
+        tooltipEl.style.display = 'block';
+        const tw = tooltipEl.offsetWidth, th = tooltipEl.offsetHeight;
+        tooltipEl.style.left = clamp(e.clientX - rect.left - tw / 2, 6, Math.max(6, rect.width - tw - 6)) + 'px';
+        tooltipEl.style.top = (e.clientY - rect.top - th - 16 >= 6 ? e.clientY - rect.top - th - 16 : e.clientY - rect.top + 22) + 'px';
+        tipTimer = setTimeout(() => { tooltipEl.style.display = 'none'; }, 3200);
+      } else if (touch) tooltipEl.style.display = 'none';
     }
   }
   pressPos = null;
@@ -1361,7 +1395,7 @@ function flashTab(msg) {
 const GLOSSARY = [
   ['국정운영 점수', '20년 동안의 민심을 쌓은 값입니다. 매달 그달의 민심만큼 쌓이고, 11년 차부터는 한 달이 ' + ECON.scoreLateWeight + '배로 쳐집니다. 전력 공급, 요금, 환경, 도시, 연구는 따로 점수가 없고 전부 민심의 다섯 분야를 통해 반영됩니다.'],
   ['민심의 다섯 분야', '민심(0~100)은 다섯 분야의 점수를 더한 값입니다. 분야마다 ' + ECON.moodPillarMax + '점이 만점입니다. ① 전력 공급: 정전이 없으면 만점입니다. 정전이 난 달에는 전기가 끊긴 1시간대마다 ' + ECON.moodPowerPerHour + '점씩 깎이고(0점 밑으로는 내려가지 않음), 정전이 없는 달마다 ' + ECON.moodPowerRecover + '점씩 돌아옵니다. ② 전기 요금: 국민이 내는 요금이 기대 요금과 같으면 10점, 쌀수록 오릅니다. ③ 환경: 전기를 만들 때 나오는 탄소가 0이면 만점, 탄소 기준 이상이면 0점입니다. ④ 도시·생활: 일자리(인구 증가) · 전력 수출 · 주거 여유(새 도시)에서 주민 불만(기피 시설 · 원전 불안 · 국토 잠식)을 뺍니다. ⑤ 미래·신뢰: 연구와, 정책 · 공약을 지키는 것입니다. 모든 분야가 만점이어야 100이라서 한두 분야만 잘해서는 높이 올라가지 않습니다.'],
-  ['예상 민심', '지금 나라 상태가 그대로 이어지면 민심이 다다르게 될 값입니다. 위쪽 막대의 민심 옆에 작게 적혀 있습니다. 다섯 분야 점수의 합에 "여론"을 더한 값이고, 민심은 매달 이 값 쪽으로 차이의 ' + Math.round(ECON.moodPull * 100) + '%만큼 움직입니다. 설비를 짓거나 요금이 바뀌면 예상 민심이 먼저 바뀌고, 민심이 두세 달에 걸쳐 따라갑니다.'],
+  ['예상 민심', '지금 나라 상태가 그대로 이어지면 민심이 다다르게 될 값입니다. 위쪽 막대의 민심 옆에 작게 적혀 있습니다. 다섯 분야 점수의 합에 "여론"을 더한 값이고, 민심은 매달 이 값 쪽으로 움직입니다. 내려갈 때는 차이의 ' + Math.round(ECON.moodPull * 100) + '%, 올라갈 때는 ' + Math.round(ECON.moodPullUp * 100) + '%씩이라 잃기는 쉽고 되찾기는 더딥니다. 설비를 짓거나 요금이 바뀌면 예상 민심이 먼저 바뀌고, 민심이 몇 달에 걸쳐 따라갑니다.'],
   ['여론', '사건 카드의 선택이나 목표의 보상 · 벌칙처럼 민심을 한 번에 올리거나 내린 일이 남긴 여운입니다. 그 자리에서 민심이 바로 움직이고, 같은 크기가 예상 민심에도 얹혔다가 매달 ' + Math.round((1 - ECON.moodBuzzDecay) * 100) + '%씩 옅어집니다.'],
   ['주거 여유 · 새 도시', '도시·생활 분야의 점수 가운데 하나(' + ECON.moodHousingMax + '점)로, 전국 평균 인구 밀도로 매깁니다. 칸당 ' + ECON.housingComfort + '만 명 이하면 만점이고 과밀 기준인 ' + ECON.densityLimit + '만 명이면 0점입니다. 인구는 계속 늘어나므로 새 도시를 세워야 유지됩니다. 새 도시를 세우면 밖에서 사람이 들어와(전국 인구의 ' + Math.round(ECON.cityNewcomerShare * 100) + '% 또는 ' + Math.round(ECON.cityNewcomers * ECON.densityLimit * ECON.cityTiles) + '만 명 가운데 큰 쪽) 전력 수요도 그만큼 늘어납니다. 전기가 남을 때 수요를 끌어오는 방법이기도 합니다.'],
   ['재선', '10년 차가 끝날 때 선거가 있습니다. 10년을 넘기는 그 달의 민심이 ' + ECON.electionBar + ' 이상이어야 임기를 이어 가고, 못 미치면 게임이 끝납니다. 2년 전에 목표로 예고됩니다.'],
@@ -1627,7 +1661,10 @@ function drawStartPreview() {
     open = false;
     document.removeEventListener('keydown', onKey, true);
     box.classList.add('leaving');
-    setTimeout(() => box.classList.add('hidden'), 380);
+    // 사라지는 동안(0.4초)은 이 화면이 누름을 계속 받아 삼키고, 그 뒤로도 잠깐은 시작 화면의 버튼이 눌리지 않게 함 (연달아 두 번 누른 경우)
+    document.body.classList.add('start-guard');
+    setTimeout(() => box.classList.add('hidden'), 400);
+    setTimeout(() => document.body.classList.remove('start-guard'), 650);
   };
   // 새로고침(F5)·개발자 도구(F12)·Ctrl 조합 같은 브라우저 조작 키는 그대로 두고, 나머지 키는 "시작"으로 받음
   const onKey = (e) => {
@@ -1637,9 +1674,11 @@ function drawStartPreview() {
     close();
   };
   document.addEventListener('keydown', onKey, true);
-  box.addEventListener('pointerdown', (e) => {
+  // 누르는 순간이 아니라 손가락을 뗄 때(click) 넘어감.
+  //  예전에는 누르는 순간(pointerdown) 화면을 걷어 냈는데, 휴대폰에서는 손가락을 떼면서 생기는 클릭이 바로 밑에 드러난 시작 화면의 버튼(일반 모드 · 튜토리얼)으로 들어가 게임이 곧장 시작돼 버렸음
+  box.addEventListener('click', (e) => {
     if (e.target && e.target.closest && e.target.closest('[data-bgm]')) return;   // BGM 버튼은 이 화면에 머문 채로 음악만 켜고 끔
-    e.preventDefault(); close();
+    close();
   });
   img.addEventListener('load', () => {
     box.style.setProperty('--title-bg', 'url("' + img.src + '")');   // 그림 주변 여백은 같은 그림을 흐리게 깔아 채움
