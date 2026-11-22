@@ -68,7 +68,7 @@ const TECH = {
       ['SMR 양산', 'SMR 건설비 −20%'],
       ['온라인 검사', '원전 정기검사 정지 없음'],
       ['고연소도 연료', '원전·SMR 출력 +8%'],
-      ['피동 안전 계통', '원전 밀집 불안 절반'],
+      ['피동 안전 계통', '원전 밀집 불안 −30%'],
       ['대형 모듈 공장', '원전·SMR 건설비 −12%'],
       ['사고저항성 연료', '도시 근처 원전·SMR 불만 절반'],
       ['출력 증강', '원전·SMR 출력 +6% 추가'],
@@ -269,7 +269,7 @@ function techMods(state) {
     coalFuel: 1, coalCo2: 1, coalCapex: 1, coalCap: 1, coalMinLoad: PLANTS.coal.minLoad, coalRamp: PLANTS.coal.ramp, coalLife: PLANTS.coal.lifeYears, coalNuisance: 1,
     nuclearOppRange: PLANTS.nuclear.oppositionRange, nuclearOppMult: PLANTS.nuclear.oppositionMult, nuclearCapex: 1,
     smrUnlocked: nu >= 2, smrCapex: 1, smrBuildDelta: 0, nuclearBuildDelta: 0, nukeCap: 1, noOutage: nu >= 6,
-    nukeAnxMult: nu >= 8 ? 0.5 : 1, nukeNuisance: nu >= 10 ? 0.5 : 1, nukeOpMult: nu >= 13 ? 0.6 : 1,   // 밀집 불안 · 도시 근처 불만 · 운전비(연료비+변동 운영비)
+    nukeAnxMult: nu >= 8 ? 0.7 : 1, nukeNuisance: nu >= 10 ? 0.5 : 1, nukeOpMult: nu >= 13 ? 0.6 : 1,   // 밀집 불안 · 도시 근처 불만 · 운전비(연료비+변동 운영비)
     nukeMinLoad: 1,   // 원전은 출력을 조절(부하추종)할 수 없음: 항상 100%. 남는 전기는 배터리·수출·다른 발전기 조절로 받아내야 함
     solarCap: 1, solarCapex: 1,
     windCap: 1, windCapex: 1, coastalBonus: PLANTS.wind.coastalBonus, windOnSea: wi >= 5,

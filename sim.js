@@ -98,6 +98,7 @@ function pickEvent(state) {
   const season = seasonOf(state.month);
   const nuclearBuilding = state.buildings.some((b) => (PLANTS[b.type].kind === 'nuclear' || PLANTS[b.type].kind === 'smr') && b.status === 'building');
   const pool = EVENTS.filter((ev) => {
+    if (ev.disabled) return false;
     if (ev.seasons && !ev.seasons.includes(season)) return false;
     if (ev.requires === 'nuclearBuilding' && !nuclearBuilding) return false;
     if (ev.requires === 'nuclearOnline' && !state.buildings.some((b) => (PLANTS[b.type].kind === 'nuclear' || PLANTS[b.type].kind === 'smr') && b.status === 'online')) return false;
@@ -218,7 +219,8 @@ function fleetCapacities(state) {
   const stopped = effectsNow(state).outageIds;             // 화재·점검·파업 등으로 멈춘 설비
   for (const b of state.buildings) {
     if (b.status !== 'online') continue;
-    if (state.outageId === b.id) continue;                 // 정기검사로 이번 달 정지
+    if (state.outageId === b.id) continue;                 // 정기검사로 이번 달 정지 (예전 저장분의 예고된 검사)
+    if (state.maintIds && state.maintIds.indexOf(b.id) >= 0) continue;   // 정기검사: 원전·SMR은 가동 18개월마다 한 달 정지
     if (stopped.has(b.id)) continue;
     const p = PLANTS[b.type];
     if (p.isStorage) {
@@ -548,7 +550,7 @@ function happinessChange(state, report) {
     const alive = (b) => b.status !== 'demolishing' && b.status !== 'retired';
     const bigN = state.buildings.filter((b) => b.type === 'nuclear' && alive(b)).length;
     const smrN = state.buildings.filter((b) => b.type === 'smr' && alive(b)).length;
-    const anx = (Math.max(0, bigN - ECON.moodNukeFree) * ECON.moodNukePer + Math.max(0, smrN - ECON.moodSmrFree) * ECON.moodSmrPer) * (state.policies && state.policies.energy === 'nuclear' ? 0.5 : 1) * techMods(state).nukeAnxMult;   // 원자력 테크 "피동 안전 계통": 절반
+    const anx = (Math.max(0, bigN - ECON.moodNukeFree) * ECON.moodNukePer + Math.max(0, smrN - ECON.moodSmrFree) * ECON.moodSmrPer) * (state.policies && state.policies.energy === 'nuclear' ? 0.7 : 1) * techMods(state).nukeAnxMult;   // 친원전 노선 −30% · 원자력 테크 "피동 안전 계통" −30% (예전에는 둘 다 절반이라 합치면 4분의 1이 되어 원전을 아무리 늘려도 부담이 없었음)
     if (anx > 0) parts.push(part('nukes', '원전 밀집 불안 (원전 ' + bigN + '기' + (smrN ? ' · SMR ' + smrN + '기' : '') + ')', -Math.min(ECON.moodNukeCap, anx)));
     // 국토 잠식: 땅 위의 태양광·풍력이 국토를 많이 차지하면 경관·농지 훼손 불만 (재생에너지 중심 노선이면 절반). 바다 위 풍력은 세지 않음
     {
@@ -584,7 +586,7 @@ function happinessChange(state, report) {
     // 정책 공약 · 재선 공약: 점검 · 평가 결과에 따라 +/− (events.js pledgeMoodOf). 노선을 바꾸면 그 공약은 없어짐
     for (const q of state.quests || []) {
       const def = (typeof questById === 'function') ? questById(q.id) : null;
-      if (!def || !def.pledge) continue;
+      if (!def || !def.pledge || def.term2) continue;   // 재선 공약의 결과는 아래에서 다섯 분야와 따로 더함
       const tname = def.title.replace('재선 공약: ', '').replace('공약: ', '');
       const pv = (typeof pledgeMoodOf === 'function') ? pledgeMoodOf(q, def) : 0;   // 점검형: 마지막 점검 결과 · 달성형: 18년 차 말 평가 등급 · 재선 공약: 지킴/못 지킴
       if (pv) parts.push(part('pledge:' + def.policy, (def.term2 ? '재선 공약 ' : '공약 ') + (pv > 0 ? '이행 · ' : '불이행 · ') + tname, pv));
@@ -605,6 +607,13 @@ function happinessChange(state, report) {
   const extras = [];
   if (Math.abs(buzz) >= 0.1) extras.push(part('buzz', buzz > 0 ? '좋은 여론 (사건·목표의 여운 · 매달 10%씩 옅어짐)' : '나쁜 여론 (사건·목표의 여운 · 매달 10%씩 옅어짐)', buzz));
   if (state.accidentMood) extras.push(part('accident', '원전 사고의 상처 (임기 끝까지)', -state.accidentMood));
+  // 재선 공약의 평가 결과: 임기에서 가장 큰 약속이라 다섯 분야(각 20점)와 따로 더함 → 미래·신뢰가 만점이어도 그대로 반영됨
+  for (const q of state.quests || []) {
+    const def = (typeof questById === 'function') ? questById(q.id) : null;
+    if (!def || !def.term2) continue;
+    const pv = (typeof pledgeMoodOf === 'function') ? pledgeMoodOf(q, def) : 0;
+    if (pv) extras.push(part('pledge:term2', (pv > 0 ? '재선 공약 이행 · ' : '재선 공약 불이행 · ') + def.title.replace('재선 공약: ', '') + ' (임기 끝까지)', pv));
+  }
 
   const sumP = pillars.reduce((s, p) => s + p.score, 0), sumX = extras.reduce((s, p) => s + p.value, 0);
   const target = clamp(sumP + sumX, 0, 100);

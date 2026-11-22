@@ -144,7 +144,7 @@ const DECISIONS = [
       theme: key, lv, t2: 'term2_' + key + '_' + lv,
       get label() { return term2Theme(key).title + ' · ' + term2Theme(key).goal(term2Theme(key).targets[lv]) + ' (' + TERM2_LEVELS[lv].short + ')'; },
       show: (s) => { const T = term2Theme(key); return !T.show || T.show(s); },
-      desc: () => { const d = questById('term2_' + key + '_' + lv); return d.brief + (d.boost ? ' · 발표하면 1년간 민심 +' + d.boost : '') + ' · 지키면 민심 +' + d.kept + ' (임기 끝까지) · 못 지키면 민심 −' + d.penalty.happy; },
+      desc: () => { const d = questById('term2_' + key + '_' + lv); return d.brief + (d.boost ? ' · 발표하면 1년간 민심 +' + d.boost : '') + ' · 지키면 민심 +' + d.gain + '에 남은 임기 +' + d.kept + ' · 못 지키면 민심 −' + d.penalty.happy; },
       apply(s) { const d = questById('term2_' + key + '_' + lv); giveTerm2(s, d.id); return '"' + term2Theme(key).title + '"을 약속했습니다 (' + TERM2_LEVELS[lv].name + '). ' + d.short + '. 진행 상황은 길잡이와 정책 탭에 나옵니다.' + (d.boost ? ' 공약 기대감으로 한동안 민심이 +' + d.boost + ' 오릅니다.' : ''); },
     }))),
   },
@@ -636,6 +636,7 @@ function crowdedCitiesOf(s) { return s.cities.filter((c) => cityDensity(c) > ECO
 const PLEDGE_CHECKS = [72, 120, 168, 216];   // 점검하는 달 (임기 시작부터 센 결산 횟수): 6 · 10 · 14 · 18년 차 말
 const PLEDGE_FINAL = 216;                    // 달성형을 평가하는 달: 18년 차 말
 const PLEDGE_KEEP = { gain: 3, hold: 2, hit: 5, loss: 3 };
+const PLEDGE_DAY_CAP = 30;   // 같은 달에 여러 공약이 판정되어도, 그 자리에서 움직이는 민심은 합쳐서 이만큼까지 (남은 임기의 +/−는 따로)
 const PLEDGE_GRADES = [
   { name: '완수',        min: 1,    bump: 10,  hold: 5 },    // 모든 조건 달성
   { name: '대체로 이행', min: 0.85, bump: 3,   hold: 1 },    // 달성률 85% 이상
@@ -759,7 +760,7 @@ function pledgeMoodOf(q, def) {
   return q.grade === undefined || q.late ? 0 : PLEDGE_GRADES[q.grade].hold;
 }
 // 매달 결산 때: 점검 · 평가할 달이면 판정하고, 어긴 뒤 다시 채웠으면 벌점을 지움
-function pledgeTick(state, q, def, notices) {
+function pledgeTick(state, q, def, notices, acc) {   // acc.v = 이번 달 판정으로 그 자리에서 움직일 민심 (updateQuests가 모아서 한 번에 반영)
   if (!q.v2) { if (q.status !== 'active') return; pledgeInit(state, q, def); }
   const h = pledgeMonths(state), name = def.title.replace('공약: ', '');
   const sg = (v) => (v > 0 ? '+' : '−') + Math.abs(v);
@@ -768,7 +769,7 @@ function pledgeTick(state, q, def, notices) {
     if (q.next && h >= q.next) {
       const yr = Math.round(q.next / 12);
       q.res.push(okAll ? 'kept' : 'broken'); q.last = okAll ? 'kept' : 'broken';
-      moodBump(state, okAll ? PLEDGE_KEEP.gain : -PLEDGE_KEEP.hit);
+      acc.v += okAll ? PLEDGE_KEEP.gain : -PLEDGE_KEEP.hit;
       const text = '📜 공약 점검 (' + yr + '년 차): ' + name + (okAll ? ' 지킴 · 민심 +' + PLEDGE_KEEP.gain + ', 다음 점검까지 +' + PLEDGE_KEEP.hold : ' 어김 · 민심 −' + PLEDGE_KEEP.hit + ', 다음 점검까지 −' + PLEDGE_KEEP.loss);
       notices.push(text);
       const nx = PLEDGE_CHECKS.find((c) => c > h);
@@ -781,7 +782,7 @@ function pledgeTick(state, q, def, notices) {
     if (h >= q.goalAt) {
       const gi = pledgeGradeOf(ms), G = PLEDGE_GRADES[gi];
       q.grade = gi; q.rate = Math.round(pledgeRateOf(ms) * 100); q.shot = ms.map((m) => m.now); q.status = 'done'; q.endAt = monthIdxOf(state);   // shot = 평가 때의 값 (기록용)
-      moodBump(state, G.bump);
+      acc.v += G.bump;
       const text = '📜 공약 평가 (18년 차): ' + name + ' — ' + G.name + ' (달성률 ' + q.rate + '%) · 민심 ' + sg(G.bump) + ', 남은 임기 ' + sg(G.hold);
       notices.push(text);
     }
@@ -810,9 +811,11 @@ const TERM2_LEAD_MONTHS = 12;        // 선거 몇 달 전에 공약을 발표�
 const TERM2_DEADLINE_MONTH = 216;    // 18년 차 말 (임기 216번째 달)
 const TERM2_BOOST_FULL = 12, TERM2_BOOST_FADE = 12;   // 공약 기대감: 발표 뒤 12개월은 온전히, 그 뒤 12개월에 걸쳐 사라짐
 const TERM2_LEVELS = [
-  { name: '현실적인 약속', short: '현실적', gain: 4, kept: 2,   broken: 3, hit: 8,  boost: 0 },
-  { name: '과감한 약속',   short: '과감',   gain: 6, kept: 3.5, broken: 5, hit: 12, boost: 2 },
-  { name: '파격적인 약속', short: '파격',   gain: 8, kept: 5,   broken: 7, hit: 16, boost: 4 },
+  // 2026-11-22: 재선 공약이 일반 정책 공약(완수 +10 · +5)보다 보상이 작아서 크게 키움. 임기에서 가장 큰 약속이 되게 함
+  //  gain · hit = 18년 차 말 평가 때 한 번에 오르내리는 민심, kept · broken = 남은 임기 동안의 민심 (다섯 분야와 따로 더해짐 → 미래·신뢰가 만점이어도 반영)
+  { name: '현실적인 약속', short: '현실적', gain: 12, kept: 5,  broken: 5,  hit: 12, boost: 0 },
+  { name: '과감한 약속',   short: '과감',   gain: 18, kept: 8,  broken: 8,  hit: 18, boost: 2 },
+  { name: '파격적인 약속', short: '파격',   gain: 24, kept: 11, broken: 11, hit: 24, boost: 4 },
 ];
 function avg12Of(s, f) { const h = (s.history || []).slice(-12); return h.length ? h.reduce((a, x) => a + (f(x) || 0), 0) / h.length : 0; }
 // 연구 공약이 보는 트리: 내 노선의 트리 전부 (중립이면 가장 많이 올린 두 트리) + 계통
@@ -829,7 +832,8 @@ const TERM2_THEMES = [
     show: (s) => pol(s, 'energy') === 'renew', targets: [0.55, 0.80, 0.90], fmtT: pct0, goal: (t) => '재생 ' + pct0(t),
     brief: (t) => '태양광·풍력이 1년 평균 발전량의 ' + pct0(t) + ' 이상', value: (s) => avg12Of(s, (x) => x.ren), ok: (v, t) => v >= t, fmtV: pct0 },
   { key: 'export', ico: '🔌', color: '#c58af9', title: '전력 수출 강국', what: '이웃 나라에 파는 전기가 1년 평균 우리 수요에서 차지하는 비중',
-    show: (s) => pol(s, 'energy') === 'nuclear', targets: [0.15, 0.25, 0.40], fmtT: pct0, goal: (t) => '수출 ' + pct0(t),
+    show: (s) => pol(s, 'energy') === 'nuclear', targets: [0.06, 0.10, 0.15], fmtT: pct0,   // 이웃이 사 주는 양이 우리 수요의 20%쯤으로 줄어 목표도 낮춤 (예전 15 · 25 · 40%)
+    goal: (t) => '수출 ' + pct0(t),
     brief: (t) => '전력 수출이 1년 평균 수요의 ' + pct0(t) + ' 이상', value: (s) => avg12Of(s, (x) => x.exp), ok: (v, t) => v >= t, fmtV: (v) => fmt(v * 100, 1) + '%' },
   { key: 'growth', ico: '🏙', color: '#ffab5c', title: '성장 국가', what: '최대 전력 수요가 공약을 발표한 때의 몇 배가 되는가',
     show: (s) => pol(s, 'energy') !== 'renew' && pol(s, 'energy') !== 'nuclear', targets: [1.8, 2.15, 2.5], fmtT: (t) => t + '배', goal: (t) => '수요 ' + t + '배',
@@ -979,15 +983,16 @@ function maybeAssignQuest(state, force) {
 function updateQuests(state, report) {
   const notices = [];
   const now = monthIdxOf(state);
+  const acc = { v: 0 };   // 공약 판정으로 이번 달 그 자리에서 움직일 민심
   for (const q of state.quests || []) {
     const def = questById(q.id);
     if (!def) continue;
-    if (def.pledge && !def.term2) { pledgeTick(state, q, def, notices); continue; }   // 정책 공약: 점검형은 4년마다, 달성형은 18년 차 말에
+    if (def.pledge && !def.term2) { pledgeTick(state, q, def, notices, acc); continue; }   // 정책 공약: 점검형은 4년마다, 달성형은 18년 차 말에
     if (def.term2 && q.status === 'active') {   // 재선 공약: 18년 차 말에 한 번 평가 (그때의 1년 평균). 일찍 채워도 그때까지 지켜야 함
       if (now >= q.deadline) {
         const tn = def.title.replace('재선 공약: ', '');
-        if (def.check(state, report, q)) { q.status = 'done'; q.endAt = now; moodBump(state, def.gain || 0); const t = '🎉 재선 공약 이행: ' + tn + ' (민심 +' + (def.gain || 0) + ', 남은 임기 +' + def.kept + ')'; notices.push(t); }
-        else { q.status = 'failed'; q.endAt = now; applyPenalty(state, def); const t = '✕ 재선 공약 불이행: ' + tn + ' (' + penaltyText(def) + ')'; notices.push(t); }
+        if (def.check(state, report, q)) { q.status = 'done'; q.endAt = now; acc.v += def.gain || 0; const t = '🎉 재선 공약 이행: ' + tn + ' (민심 +' + (def.gain || 0) + ', 남은 임기 +' + def.kept + ')'; notices.push(t); }
+        else { q.status = 'failed'; q.endAt = now; acc.v -= (def.penalty && def.penalty.happy) || 0; const t = '✕ 재선 공약 불이행: ' + tn + ' (' + penaltyText(def) + ')'; notices.push(t); }
       }
       continue;
     }
@@ -1006,6 +1011,11 @@ function updateQuests(state, report) {
       continue;
     }
     if (now > q.deadline) { q.status = 'failed'; q.endAt = now; applyPenalty(state, def); notices.push('✕ 목표 실패: ' + def.title + ' (' + penaltyText(def) + ')'); }
+  }
+  if (acc.v) {
+    const applied = clamp(acc.v, -PLEDGE_DAY_CAP, PLEDGE_DAY_CAP);
+    moodBump(state, applied);
+    if (applied !== acc.v) notices.push('📜 공약 판정이 한 달에 몰려, 그 자리에서 움직인 민심은 ' + (applied > 0 ? '+' : '−') + Math.abs(applied) + '까지만 반영됐습니다 (남은 임기의 효과는 그대로)');
   }
   return notices;
 }
@@ -1038,9 +1048,9 @@ const POLICIES = {
       // 글 쓰는 법: 점수 이야기("환경 점수를 못 받음", "고점이 낮은 길")가 아니라 실제 정책의 특성처럼 적음.
       //  <small>…</small> 안은 그 효과가 생기는 까닭 (선택 카드에만 보이고, 정책 탭의 한 줄 요약에서는 빠짐)
       nuclear: { label: '친원전', pledge: 'pledge_energy_nuclear',
-        good: ['원전·SMR 건설비 −25% <small>(금융 지원 · 인허가 단축)</small>', '원전이 늘어도 주민 불안 절반 <small>(주변 지역 지원)</small>'],
+        good: ['원전·SMR 건설비 −25% <small>(금융 지원 · 인허가 단축)</small>', '원전이 늘어도 주민 불안 −30% <small>(주변 지역 지원)</small>'],
         bad: ['원전 사고가 나면 타격 1.5배 <small>(정부 책임론)</small>', '탈원전 단체의 반대 시위가 잦아짐'],
-        desc: '원전·SMR 건설비 −25% · 원전이 늘어도 주민 불안 절반 · 원전 사고가 나면 타격 1.5배 · 탈원전 단체의 반대 시위가 잦아짐' },
+        desc: '원전·SMR 건설비 −25% · 원전이 늘어도 주민 불안 −30% · 원전 사고가 나면 타격 1.5배 · 탈원전 단체의 반대 시위가 잦아짐' },
       thermal: { label: '화력 중심', pledge: 'pledge_energy_thermal',
         good: ['복합발전·석탄 건설비 −20% <small>(인허가 간소화)</small>', '화력 연료비 −10% <small>(장기 도입 계약)</small>'],
         bad: ['탄소 배출이 많음 <small>(해마다 오르는 탄소세 · 환경 불만)</small>', '연료를 수입에 의존 <small>(가스·석탄값이 뛰면 부담)</small>'],

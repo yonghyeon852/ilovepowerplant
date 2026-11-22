@@ -412,7 +412,8 @@ function renderForecast(state) {
   if (atLimitHours > 0) { gs -= m2.gridForming ? 5 : Math.min(35, 10 + curtailPct * 100); gsReasons.push('관성 없는 전기가 한도 초과 ' + atLimitHours + '시간'); }
   if (overRisk) { gs -= 10; gsReasons.push('밤에 남는 전기 ' + fmt(overEst) + ' MW'); }
   else if (mustRun > minDemand) { gs -= 5; gsReasons.push('야간 과잉 발전 (배터리·수출이 받아 냄)'); }
-  if (state.outageId) { gs -= 10; gsReasons.push('원전 정기검사 정지'); }
+  const maintNow = (state.maintIds || []).length + (state.outageId ? 1 : 0);
+  if (maintNow) { gs -= 10; gsReasons.push('원전 정기검사 정지 ' + maintNow + '기'); }
   if (stoppedCount) { gs -= 10; gsReasons.push('사고로 정지된 설비 ' + stoppedCount + '기'); }
   gs = clamp(Math.round(gs), 0, 100);
   const gsLevel = gs >= 80 ? '안정' : gs >= 60 ? '주의' : gs >= 40 ? '불안정' : '위험';
@@ -442,8 +443,15 @@ function renderForecast(state) {
   else if (mustRun > minDemand) alerts.push(['warn', '야간 과잉 발전 ' + fmt(mustRun - minDemand) + ' MW (배터리·수출이 받아 냄)']);
   if (retired) alerts.push(['bad', '수명 종료로 정지된 설비 ' + retired + '기 · 철거 필요']);
   if (soon) alerts.push(['warn', '12개월 안에 수명이 끝나는 설비 ' + soon + '기']);
-  if (state.outageId) alerts.push(['bad', '원전 정기검사로 이번 달 정지']);
-  else if (state.scheduledOutage) { const left = state.scheduledOutage.due - (state.year * 12 + state.month); alerts.push(['warn', state.scheduledOutage.name + ' 정기검사 ' + (left <= 0 ? '이번 달' : left + '개월 뒤') + ' · 한 달 정지']); }
+  {
+    // 원전 정기검사: 이번 달 멈춘 것과 다음 달 멈출 것 (가동 18개월마다 한 달)
+    const capOf = (b) => plantStats(state, b.type).capacity || 0;
+    const nowOut = state.buildings.filter((b) => (state.maintIds || []).indexOf(b.id) >= 0 || state.outageId === b.id);
+    if (nowOut.length) alerts.push(['bad', '원전 정기검사로 이번 달 ' + nowOut.length + '기 정지 (−' + fmt(nowOut.reduce((a, b) => a + capOf(b), 0)) + ' MW)']);
+    const next = techMods(state).noOutage ? [] : state.buildings.filter((b) => b.status === 'online' && PLANTS[b.type].kind === 'nuclear' && (b.age + 1) % ECON.nukeInspectEvery === 0);
+    if (next.length) alerts.push(['warn', '다음 달 원전 정기검사 ' + next.length + '기 (−' + fmt(next.reduce((a, b) => a + capOf(b), 0)) + ' MW) · 대체 설비를 확인하세요']);
+  }
+  if (state.scheduledOutage) { const left = state.scheduledOutage.due - (state.year * 12 + state.month); alerts.push(['warn', state.scheduledOutage.name + ' 정기검사 ' + (left <= 0 ? '이번 달' : left + '개월 뒤') + ' · 한 달 정지']); }
   if (ind < 0) alerts.push(['warn', '전력 부족 우려로 인구 유입 둔화']);
   if (atLimitHours > 0 && curtailPct >= 0.1) alerts.push([m2.gridForming ? 'warn' : 'bad', '재생 출력 제한 ' + fmt(curtailPct * 100) + '%' + (m2.gridForming ? ' · 남는 전기는 수출로' : ' · 주파수 사고 위험 월 ' + fmt(atLimitHours * ECON.freqRiskAtLimit, 1) + '회 · 계통 테크 필요 (4단계부터 사고 없음)')]);
   if (alerts.length) html += alerts.map((a) => '<div class="alert ' + a[0] + '">' + (a[0] === 'bad' ? '⚠ ' : '· ') + a[1] + '</div>').join('');
@@ -615,13 +623,17 @@ function renderSelected(state) {
   const left = Math.max(0, life - b.age);
   const ageSt = plantAgeStatus(b);
 
-  const status = b.status === 'online' ? (state.outageId === b.id ? '<span class="bad">정기검사 중 (이번 달 정지)</span>' : ageSt === 'aging' ? '<span class="warn">가동 중 (노후, 출력 −10%)</span>' : '<span class="good">가동 중</span>')
+  const status = b.status === 'online' ? (state.outageId === b.id || (state.maintIds || []).indexOf(b.id) >= 0 ? '<span class="bad">정기검사 중 (이번 달 정지)</span>' : ageSt === 'aging' ? '<span class="warn">가동 중 (노후, 출력 −10%)</span>' : '<span class="good">가동 중</span>')
                : b.status === 'upgrading' ? '<span class="warn">업그레이드 중 (' + b.monthsLeft + '개월)</span>'
                : b.status === 'demolishing' ? '<span class="bad">철거 중 (' + b.monthsLeft + '개월)</span>'
                : b.status === 'retired' ? '<span class="bad">수명 종료 · 정지</span>'
                : '<span class="warn">건설 중 (' + b.monthsLeft + '개월)</span>';
 
   let html = '<div class="row"><b>' + p.name + '</b>' + status + '</div>';
+  if (b.status === 'online' && p.kind === 'nuclear') {
+    html += techMods(state).noOutage ? '<div class="row"><span>정기검사</span><b class="good">멈추지 않음 (온라인 검사)</b></div>'
+      : '<div class="row"><span>다음 정기검사</span><b>' + (ECON.nukeInspectEvery - (b.age % ECON.nukeInspectEvery)) + '개월 뒤 한 달 정지</b></div>';
+  }
   if (state.scheduledOutage && state.scheduledOutage.id === b.id) {
     const left = state.scheduledOutage.due - (state.year * 12 + state.month);
     html += '<div class="row warn"><span>⚠ 정기검사 예정</span><b>' + (left <= 0 ? '이번 달' : left + '개월 뒤') + ' 한 달 정지</b></div>';
@@ -999,7 +1011,7 @@ function decisionCardsHtml(def) {
         '<strong>' + T.goal(T.targets[x.c.lv]) + '</strong>' +
         '<span class="t2-desc">' + T.brief(T.targets[x.c.lv]) + '</span>' +
         '<span class="t2-boost ' + (L.boost ? 'on' : '') + '">' + (L.boost ? '📣 발표 효과 · 민심 +' + L.boost + ' <small>(1년, 그 뒤 사라짐)</small>' : '발표 효과 없음') + '</span>' +
-        '<span class="t2-foot"><i class="good">지키면 민심 +' + d.kept + ' <small>(임기 끝까지)</small></i><i class="bad">못 지키면 민심 −' + d.penalty.happy + ' · 그 뒤로도 −' + d.broken + '</i></span>' +
+        '<span class="t2-foot"><i class="good">지키면 민심 +' + d.gain + ' <small>· 남은 임기 +' + d.kept + '</small></i><i class="bad">못 지키면 민심 −' + d.penalty.happy + ' <small>· 남은 임기 −' + d.broken + '</small></i></span>' +
         '</button>';
     }).join('') + '<div class="t2-confirm hidden"><button class="primary" data-confirm=""></button></div>';
 }
@@ -1168,7 +1180,7 @@ const HAPPY_CAUSE = {
   'pledge:market':   ['전력시장 정책 공약 불이행', '정책을 고를 때 한 약속을 점검·평가 때 지키지 못했습니다. 점검형은 4년마다, 달성형은 18년 차 말에 보니 정책 탭의 막대를 임기 후반까지 챙기세요.'],
   'pledge:industry': ['산업 정책 공약 불이행', '정책을 고를 때 한 약속을 점검·평가 때 지키지 못했습니다. 점검형은 4년마다, 달성형은 18년 차 말에 보니 정책 탭의 막대를 임기 후반까지 챙기세요.'],
   'pledge:rd':       ['R&D 정책 공약 불이행', '정책을 고를 때 한 약속을 점검·평가 때 지키지 못했습니다. 점검형은 4년마다, 달성형은 18년 차 말에 보니 정책 탭의 막대를 임기 후반까지 챙기세요.'],
-  nukes:     ['원전 밀집 불안', '대형 원전은 2기째부터, SMR은 4기째부터 불안이 커집니다. 친원전 노선이면 절반으로 줄어듭니다.'],
+  nukes:     ['원전 밀집 불안', '대형 원전은 ' + (ECON.moodNukeFree + 1) + '기째부터, SMR은 ' + (ECON.moodSmrFree + 1) + '기째부터 불안이 커집니다. 친원전 노선이면 30% 줄어듭니다.'],
   land:      ['태양광·풍력의 국토 잠식', '땅을 너무 많이 차지하면 불만이 생깁니다. 테크로 한 기당 출력을 키우거나, 풍력을 바다 위로 보내거나, 재생에너지 중심 노선으로 절반을 줄이세요.'],
   tariff:    ['요금 할증', '요금 할증은 돈이 급할 때만 쓰고, 여유가 생기면 표준이나 지원으로 돌리세요.'],
   'policy:market':   ['시장 자유화 노선', '돈은 더 벌지만 민심이 깎입니다. 번 돈을 요금 지원이나 설비에 돌려 메워야 합니다.'],

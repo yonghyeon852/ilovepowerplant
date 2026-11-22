@@ -44,7 +44,7 @@ const PLANTS = {
     dispatchable: true, inertial: true, minLoad: 1.0, mustRun: true,
     terrain: [LAND], needsSea: true, oppositionRange: 5, oppositionMult: 1.3,
     requiresTech: { tree: 'nuclear', level: 1 },
-    traits: '탄소 0 · 싸고 꾸준함 · 바다 옆에만 · 공사 30개월 · 출력 조절 불가 · 많아지면 불안 · 테크 15단계',
+    traits: '탄소 0 · 싸고 꾸준함 · 바다 옆에만 · 공사 30개월 · 출력 조절 불가 · 18개월마다 한 달 정기검사 · 많아지면 불안',
     desc: '가장 싸고 깨끗한 전기를 꾸준히 만듭니다. 바다 옆에만 지을 수 있고 항상 100%로 돕니다. 출력을 줄일 수 없어서, 수요가 적은 밤에 전기가 남으면 그 처리 비용이 전기요금에 얹힙니다. 반대로 원전만으로 낮의 최대 수요를 못 채우면 정전이 납니다. 밤의 최소 수요만큼만 짓고 나머지는 복합발전·배터리·수출과 섞으세요. 도시 가까이 지으면 주민 반발로 건설비와 공사 기간이 늘고, 2기째부터는 원전 밀집 불안이 생깁니다(기당 −2.5, SMR보다 같은 전기당 불안이 훨씬 적음). 도매가보다 싸게 정산돼 소비자 요금을 낮춥니다. 원자력 테크 1단계가 있어야 지을 수 있습니다.',
   },
   smr: {
@@ -56,7 +56,7 @@ const PLANTS = {
     terrain: [LAND], needsSea: false, oppositionRange: 3, oppositionMult: 1.15,
     nuisance: { range: 3, per: 1, inside: 2 },
     requiresTech: { tree: 'nuclear', level: 2 },
-    traits: '탄소 0 · 바다가 없어도 됨 · 작은 부지 · 공사 12개월 · 출력 조절 불가 · MW당 비쌈 · 기수가 늘면 불안이 빨리 커짐',
+    traits: '탄소 0 · 바다가 없어도 됨 · 공사 12개월 · 출력 조절 불가 · 18개월마다 한 달 정기검사 · MW당 비쌈 · 기수가 늘면 불안이 빨리 커짐',
     desc: '공장에서 만들어 조립하는 작은 원전입니다. 바다가 없어도 되고 12개월이면 짓지만, 같은 전기를 내는 데 드는 건설비는 대형 원전보다 비쌉니다. 3기째부터 원전 밀집 불안이 기당 −1.5씩 쌓여, 많이 지을수록 안전 테크(원자력 8단계)나 대형 원전으로 옮겨 가야 합니다. 원자력 테크 2단계가 있어야 지을 수 있습니다.',
   },
   solar: {   // 재생에너지는 계통 통합 비용 공제(그 시간 재생 비중 × 40%)를 정산에서 뺀다
@@ -173,7 +173,7 @@ const ECON = {
   rec: 20,                 // 재생에너지 보조금 원/kWh (시작 시점)
   recYears: 10,            // 이 기간에 걸쳐 보조금이 0으로 줄어듦
   exportPriceMax: 110,     // 수출 단가 원/kWh (연계선 비었을 때)
-  exportPriceMin: 50,      // 수출 단가 원/kWh (연계선 꽉 찼을 때)
+  exportPriceMin: 40,      // 수출 단가 원/kWh (이웃이 살 수 있는 양을 다 채웠을 때). 원전의 발전 원가(55원)보다 낮아, 많이 밀어낼수록 밑지고 팜
   importPriceMin: 170,     // 수입 단가 원/kWh (이용률 0%)
   importPriceMax: 300,     // 수입 단가 원/kWh (이용률 100%)
   importShareLimit: 0.3,   // 그 시간 수요의 30%까지만 수입 가능 (계통 안정성 규제)
@@ -181,7 +181,9 @@ const ECON = {
   neighborDemandRatio: 1.0,   // 시작 시 이웃 나라 최대 수요 = 우리 최대 수요 × 이 값
   neighborGrowth: 0.04,       // 이웃 나라 수요 연 증가율 (우리보다 느려서 갈수록 상대적으로 작아짐)
   neighborMinRatio: 0.5,      // 이웃 나라 최대수요는 우리 최대수요의 이 비율 아래로는 안 내려감 (수출 시장 유지)
-  neighborImportShare: 1.0,   // 이웃 나라는 자기 수요만큼까지 수입함 (우리 수출 상한 = 그 시간 이웃 수요)
+  // 2026-11-22: 예전에는 이웃이 자기 수요의 100%까지 사 줘서(우리 수요의 절반), 원전을 수요보다 훨씬 많이 짓고 연계선으로 전부 파는 것이 돈 찍는 기계였음
+  neighborImportShare: 0.4,   // 이웃 나라는 자기 수요의 40%까지만 수입함 (우리 수출 상한 = 그 시간 이웃 수요 × 0.4 → 후반에는 우리 수요의 20%쯤)
+  nukeInspectEvery: 18,       // 원전 정기검사: 원전·SMR은 가동 18개월마다 한 달씩 멈춤 (원자력 테크 "온라인 검사"를 개발하면 없어짐)
   linkAvailMid: [0.8, 1.0],    // 봄·가을 이웃 나라 여유 비율 범위
   linkAvailPeak: [0.6, 0.85],  // 여름·겨울 이웃 나라 여유 비율 범위
   overGenCost: 50,         // 과잉 발전 안정화 비용 원/kWh
@@ -253,7 +255,7 @@ const ECON = {
   moodResearchMax: 10, moodResearchMid: 5,   // 연구 수준이 국민의 기대와 같으면 5점, 1단계 앞설 때마다 +moodTechSlope
   moodTrustBase: 3,
   moodNuisanceMult: 1.5,    // 기피 시설 벌점 배수
-  // 원전 밀집 불안: 기수가 늘수록 커짐. 친원전 노선이면 절반, 원자력 테크 8단계(피동 안전 계통)면 다시 절반
+  // 원전 밀집 불안: 기수가 늘수록 커짐. 친원전 노선이면 −30%, 원자력 테크 8단계(피동 안전 계통)면 다시 −30% (2026-11-22: 둘 다 절반이던 것을 줄임)
   //  (봇 실험: SMR 기당 −1 · 3기까지 무료일 때는 SMR 13기를 지어도 −1.6이라 관리할 것이 없었음 → SMR을 잔뜩 짓는 길은 안전 테크·대형 원전·입지를 챙겨야 하게 함)
   moodNukeFree: 1, moodNukePer: 2.5,   // 대형 원전(1,000MW)은 1기까지 괜찮고, 2기째부터 기당 −2.5
   moodSmrFree: 2, moodSmrPer: 1.5,     // SMR(300MW)은 2기까지 괜찮고, 그 뒤로 기당 −1.5 (같은 전기라면 대형 원전 쪽이 불안이 훨씬 적음)
@@ -378,7 +380,7 @@ const EVENTS = [
     desc: '주민 시위로 건설 중인 원전 공사가 2개월 지연됩니다.' },
   { id: 'carbonUp',  name: '탄소세 인상',  effect: 'carbonUp', weight: 0.25,
     desc: '정부가 탄소세를 10% 인상했습니다. (영구 적용)' },
-  { id: 'outage', name: '원전 정기검사 예고', effect: 'nuclearOutage', requires: 'nuclearOnline', weight: 0.8,
+  { id: 'outage', name: '원전 정기검사 예고', effect: 'nuclearOutage', requires: 'nuclearOnline', weight: 0.8, disabled: true,   // 정기검사가 규칙(18개월마다)이 되어 무작위 사건으로는 더 나오지 않음
     desc: '6개월 뒤 원전 한 기가 정기검사로 한 달 동안 멈춥니다. 그때까지 대체 설비를 준비하세요.' },
   { id: 'breakthrough', name: '연구 성과', effect: 'rdBoost',
     desc: '연구진이 학회에서 주목받아 이번 달 테크 연구 성공 확률이 15% 오릅니다.', techBonus: 0.15 },

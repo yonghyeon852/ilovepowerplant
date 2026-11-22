@@ -871,27 +871,27 @@ canvas#forecast-chart, canvas#report-chart { display: block; width: 100%; height
 #report-body .row.sub.good b { color: var(--good); } #report-body .row.sub.bad b { color: var(--bad); }
 
 /* 24. 연구 칸: 탭에 넣지 않고 왼쪽 설비 목록 아래에 항상 보이게 (트리마다 두 줄: 이름 · 비용 / 다음 단계 효과 + 연구 버튼) */
-:root { --left-w: clamp(230px, 18vw, 300px); }
+:root { --left-w: clamp(240px, 23vw, 390px); }   /* 오른쪽 칸(290~430px)과 비슷하게. 예전 230~300px은 연구 칸까지 너무 작았음 */
 #left-col { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
 #left-col > #palette { flex: 1 1 0; min-height: 150px; }
-.rd-dock { flex: 0 1 auto; min-height: 0; max-height: 62%; overflow-y: auto; padding: 8px 9px 8px; }
+.rd-dock { flex: 0 1 auto; min-height: 0; max-height: 62%; overflow-y: auto; padding: 10px 11px 10px; }
 .rd-dock > h2 { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; cursor: default; }
-.rd-dock > h2 .rd-sum { flex: 1 1 auto; min-width: 0; font-size: 0.7rem; font-weight: 500; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rd-dock > h2 .rd-sum { flex: 1 1 auto; min-width: 0; font-size: 0.78rem; font-weight: 500; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rd-dock > h2 .rd-sum b { color: #c7a6f5; font-variant-numeric: tabular-nums; }
 .rd-dock > h2 .rd-sum b.good { color: var(--good); } .rd-dock > h2 .rd-sum b.bad { color: var(--bad); }
-.rd-dock > h2 button { flex: 0 0 auto; padding: 2px 7px; font-size: 0.68rem; }
+.rd-dock > h2 button { flex: 0 0 auto; padding: 3px 8px; font-size: 0.74rem; }
 .rd-dock.closed > h2 { margin-bottom: 0; }
 .rd-dock.closed #techrd-info { display: none; }
 .rd-dock.flash { animation: rdflash 0.9s ease; }
 @keyframes rdflash { 0%, 100% { box-shadow: none; } 30% { box-shadow: 0 0 0 2px var(--accent); } }
-.rk-lab { margin-bottom: 5px; }
+.rk-lab { margin-bottom: 7px; }
 .rk-lab .lab-btns { display: flex; gap: 4px; margin-top: 0; }
-.rk-lab .lab-btns button { flex: 1 1 0; min-width: 0; padding: 3px 2px; display: flex; align-items: baseline; justify-content: center; gap: 4px; white-space: nowrap; font-size: 0.74rem; }
-.rk-lab .lab-btns button small { opacity: 0.8; margin-left: 0; font-size: 0.66rem; }
-.rd-dock .lab-line { font-size: 0.72rem; margin: 3px 0 4px; }
-.rk { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: 'n c b'; min-height: 27px; column-gap: 6px; row-gap: 0; align-items: center; background: var(--panel-2); border-left: 3px solid var(--line-2); border-radius: 7px; padding: 2px 5px 2px 7px; margin-bottom: 2px; font-size: 0.7rem; line-height: 1.3; }
+.rk-lab .lab-btns button { flex: 1 1 0; min-width: 0; padding: 5px 2px; display: flex; align-items: baseline; justify-content: center; gap: 4px; white-space: nowrap; font-size: 0.82rem; }
+.rk-lab .lab-btns button small { opacity: 0.8; margin-left: 0; font-size: 0.72rem; }
+.rd-dock .lab-line { font-size: 0.78rem; margin: 3px 0 4px; }
+.rk { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: 'n c b'; min-height: 34px; column-gap: 8px; row-gap: 0; align-items: center; background: var(--panel-2); border-left: 3px solid var(--line-2); border-radius: 7px; padding: 4px 6px 4px 9px; margin-bottom: 3px; font-size: 0.78rem; line-height: 1.35; }
 .rk.fit-off { opacity: 0.82; }
-.rk .n { grid-area: n; min-width: 0; font-weight: 700; font-size: 0.78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
+.rk .n { grid-area: n; min-width: 0; font-weight: 700; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
 .rk .n small { font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 2px; }
 .rk .n small b { color: var(--text); }
 .rk .n .dot { display: inline-block; width: 6px; height: 6px; margin-left: 4px; border-radius: 50%; background: var(--line-2); vertical-align: 1px; }
@@ -903,10 +903,10 @@ canvas#forecast-chart, canvas#report-chart { display: block; width: 100%; height
 .rk .e.busy { color: var(--muted); }
 .rk .e small { color: var(--muted); margin-right: 3px; }
 .rk .e.done { color: var(--muted); }
-.rk > button { grid-area: b; padding: 3px 8px; white-space: nowrap; }
+.rk > button { grid-area: b; padding: 5px 11px; font-size: 0.82rem; white-space: nowrap; }
 .rd-dock details.more { margin-top: 4px; }
 /* 기본은 줄마다 한 줄 (다음 단계 효과는 줄에 마우스를 올리면 나옴). 화면이 충분히 높으면 효과를 둘째 줄에 보여 줌 */
-@media (min-height: 1020px) { .rk { grid-template-areas: 'n c b' 'e e b'; } .rk .e { display: block; } .rk > button { padding: 5px 8px; } }
+@media (min-height: 940px) { .rk { grid-template-areas: 'n c b' 'e e b'; } .rk .e { display: block; } .rk > button { padding: 6px 11px; } }
 /* 설비 목록을 조금 촘촘하게: 연구 칸이 아래에 들어와도 스크롤 없이 다 보이도록 */
 #left-col #palette-cards { gap: 5px; }
 #left-col .pc-group-head { padding: 1px 2px 3px; }
