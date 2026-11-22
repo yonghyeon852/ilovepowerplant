@@ -778,6 +778,11 @@ canvas#forecast-chart, canvas#report-chart { display: block; width: 100%; height
 .pm.ok .v b { color: var(--good); }
 .pm .v small { color: var(--muted); font-size: 0.74rem; }
 .pm .c { color: var(--good); font-weight: 700; text-align: right; }
+/* 공약 카드: 종류 꼬리표(점검형 · 달성형)와 "지금 평가받으면" 한 줄 */
+.pol-pledge .pk { font-style: normal; font-weight: 500; font-size: 0.68rem; color: var(--muted); border: 1px solid var(--line-2); border-radius: 999px; padding: 0 6px; margin-left: 4px; vertical-align: 1px; }
+.pm-now { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; font-size: 0.76rem; color: var(--muted); }
+.pm-now b { color: var(--text); } .pm-now b.good { color: var(--good); } .pm-now b.bad { color: var(--bad); }
+.pm-now i { font-style: normal; font-weight: 700; margin-left: 3px; } .pm-now i.good { color: var(--good); } .pm-now i.bad { color: var(--bad); }
 .pol-pledge .t { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-weight: 600; }
 .pol-pledge .t span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pol-pledge .p { color: var(--muted); font-size: 0.76rem; margin-top: 1px; font-variant-numeric: tabular-nums; }

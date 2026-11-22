@@ -139,7 +139,7 @@ const DECISIONS = [
   {
     id: 'term2_pledge', cat: 'term2', icon: '🗳', name: '재선 공약 발표', cards: true,
     cond: () => false,
-    desc: '선거가 1년 앞으로 다가왔습니다. 재선하면 지킬 국정 과제를 국민 앞에 약속하세요. 과감한 약속일수록 지금 기대감으로 민심이 오르지만, 18년 차 말까지 못 지키면 그만큼 크게 깎입니다. 판정은 1년 평균으로 합니다.',
+    desc: '선거가 1년 앞으로 다가왔습니다. 재선하면 지킬 국정 과제를 국민 앞에 약속하세요. 과감한 약속일수록 지금 기대감으로 민심이 오르지만, 18년 차 말에 평가해서 못 지켰으면 그만큼 크게 깎입니다. 평가는 그때의 1년 평균으로 하니, 일찍 채워도 그때까지 지켜야 합니다.',
     choices: ['renew', 'export', 'growth', 'price', 'gas', 'tech'].flatMap((key) => [0, 1, 2].map((lv) => ({
       theme: key, lv, t2: 'term2_' + key + '_' + lv,
       get label() { return term2Theme(key).title + ' · ' + term2Theme(key).goal(term2Theme(key).targets[lv]) + ' (' + TERM2_LEVELS[lv].short + ')'; },
@@ -618,93 +618,177 @@ function noBlackoutRunOf(s, q) {
 }
 function normPeakOf(s) { return s.cities.reduce((a, c) => a + c.pop, 0) * perCapitaNow(s); }   // 계절·날씨·사건의 영향을 뺀 최대 수요 (인구 × 1인당 수요). 예전에는 계절 배율만 나눠서, 봄가을에 잰 값이 여름·겨울보다 7%쯤 작게 나왔음
 function crowdedCitiesOf(s) { return s.cities.filter((c) => cityDensity(c) > ECON.densityLimit).length; }
+// ============================================================
+// 정책 공약 (2026-11-22 개편): 공약의 성격에 따라 두 가지로 나눔. 어느 쪽이든 임기 후반까지 신경 써야 함
+//  · 점검형 (kind 'keep'): 계속 지켜야 하는 약속 (정전 없음 · 싼 전기 · 고른 국토)
+//      6 · 10 · 14 · 18년 차 말에 점검 (PLEDGE_CHECKS). 점검 때 지키고 있으면 그 자리에서 민심 +gain, 다음 점검까지 +hold
+//      어기고 있으면 그 자리에서 −hit, 다음 점검까지 −loss (그 뒤에라도 조건을 다시 채우면 남은 벌점은 사라짐)
+//  · 달성형 (kind 'goal'): 쌓아 올리는 약속 (원전 · 화력 · 재생 전환, 산업 성장, 연구)
+//      18년 차 말(PLEDGE_FINAL)에 한 번, 달성 정도로 평가 (PLEDGE_GRADES). 그때의 최근 1년 평균 · 그때의 수준으로 봄
+//      → 일찍 채워도 평가 때까지 지켜야 하고, 다 못 채워도 달성률만큼은 인정받음
+//  숫자의 근거 (봇 32판, 2026-11-22): 18년 차 말에 원자력 비중 39~87%(가운데 65) · 원자력 테크 9~14(12)
+//    재생 비중 41~54%(챙기지 않을 때) · 재생 테크 15~20 / 화력 탄소 원단위 0.22(가스만)~0.38(석탄 위주) · 화력 테크 14~18
+//    최대 수요 3,700~6,700MW(제조업 육성, 가운데 5,200) / 연구소 250~475(가운데 350) / 테크 합계 24~46(가운데 33)
+//    3년 무정전은 점검마다 10판 중 6~7판 / 요금이 기대의 105% 이하는 10판 중 5판쯤
+//  확정한 목표로 다시 잰 결과 (봇 32판 · 챙김 / 안 챙김): 완수는 원전 3/8 · 재생 3/4, 0/4 · 화력 4/8 · 산업 5/8, 3/8 · 기술 상용화 5/8, 2/8 · 과학 기술 입국 8/8, 0/8
+//    점검 통과율은 고른 국토 72%, 25% · 싼 전기 69%, 53% · 끊기지 않는 전기 56%, 41%. 18년 차 평가 때 민심은 −28 ~ +24 움직임
+// ============================================================
+const PLEDGE_CHECKS = [72, 120, 168, 216];   // 점검하는 달 (임기 시작부터 센 결산 횟수): 6 · 10 · 14 · 18년 차 말
+const PLEDGE_FINAL = 216;                    // 달성형을 평가하는 달: 18년 차 말
+const PLEDGE_KEEP = { gain: 3, hold: 2, hit: 5, loss: 3 };
+const PLEDGE_GRADES = [
+  { name: '완수',        min: 1,    bump: 10,  hold: 5 },    // 모든 조건 달성
+  { name: '대체로 이행', min: 0.85, bump: 3,   hold: 1 },    // 달성률 85% 이상
+  { name: '미흡',        min: 0.6,  bump: -5,  hold: -2 },   // 달성률 60% 이상
+  { name: '불이행',      min: 0,    bump: -10, hold: -5 },
+];
+function gameMonth0(s) { return (s.startYear || ECON.startYear) * 12 + (s.startMonth || ECON.startMonth); }   // 임기 첫 달의 달 번호
+function pledgeMonths(s) { return (s.history || []).length; }   // 지금까지 결산한 달 수
+// 최근 12개월 평균 비중 (k = nuc · ren · sol · win). 예전 저장분에 없는 값은 지난달 결산에서 구함
+function shareYear(s, k) {
+  const h = (s.history || []).slice(-12).filter((x) => x[k] !== undefined);
+  if (h.length) return h.reduce((a, x) => a + x[k], 0) / h.length;
+  const r = s.lastReport, g = r && r.energy.gen; if (!g) return 0;
+  const t = (g.nuclear + g.coal + g.ccgt + g.gt + g.solar + g.wind) || 1;
+  return k === 'nuc' ? g.nuclear / t : k === 'ren' ? (g.solar + g.wind) / t : k === 'sol' ? g.solar / t : k === 'win' ? g.wind / t : 0;
+}
+function intenYear(s) { const h = (s.history || []).slice(-12).filter((x) => typeof x.inten === 'number'); return h.length ? h.reduce((a, x) => a + x.inten, 0) / h.length : 0; }
 // 공약 진행 막대 한 줄 (정책 칸에서 "지금 값 / 목표 값"을 막대로 보여 줌). 막대가 찰수록 목표에 가까움
-//  now · goal = 숫자, o.nowText · o.goalText = 화면에 적을 글, o.lower = 낮을수록 좋은 값, o.from = 막대의 출발점(예: 수요 1배), o.ok = 달성 여부를 따로 정할 때
+//  now · goal = 숫자, o.nowText · o.goalText = 화면에 적을 글, o.lower = 낮을수록 좋은 값, o.from = 막대의 출발점, o.ok = 달성 여부를 따로 정할 때
+//  raw = 달성률 계산에 쓰는 0~1 값 (ratio는 화면용: 다 채우기 전에는 97%까지만 참)
 function meterOf(label, now, goal, o) {
   o = o || {};
   const ok = o.ok !== undefined ? !!o.ok : (o.lower ? now <= goal : now >= goal);
   let ratio;
-  if (o.lower) ratio = now <= 0 ? 1 : goal / now;   // 목표보다 높을수록 막대가 줄어듦
+  if (o.lower) ratio = now <= 0 ? (goal >= 0 ? 1 : 0) : goal / now;   // 목표보다 높을수록 막대가 줄어듦
   else { const from = o.from || 0; ratio = (now - from) / Math.max(1e-9, goal - from); }
-  return { label, now: o.nowText, goal: o.goalText, ratio: ok ? 1 : Math.max(0, Math.min(0.97, ratio)), ok };
+  const raw = ok ? 1 : Math.max(0, Math.min(1, ratio));
+  return { label, now: o.nowText, goal: o.goalText, ratio: ok ? 1 : Math.min(0.97, raw), raw, ok };
 }
 const PLEDGES = [
   {
-    id: 'pledge_energy_nuclear', policy: 'energy', months: 120, title: '공약: 원전 시대', brief: '10년 안에 원자력 비중 30% + 원자력 테크 5단계',
-    short: '10년 안에 원전·SMR로 한 달 전기의 30% 이상을 만들고, 원자력 테크 5단계까지 개발',
-    check: (s, r) => nukeShareOf(r) >= 0.3 && (s.tech.nuclear || 0) >= 5,
-    progress: (s) => '원자력 ' + (s.lastReport ? fmt(nukeShareOf(s.lastReport) * 100) : '0') + '% / 30% · 테크 ' + (s.tech.nuclear || 0) + ' / 5단계',
-    meters: (s) => { const sh = s.lastReport ? nukeShareOf(s.lastReport) : 0, t = s.tech.nuclear || 0; return [meterOf('원자력 비중', sh, 0.3, { nowText: fmt(sh * 100) + '%', goalText: '30%' }), meterOf('원자력 테크', t, 5, { nowText: t + '단계', goalText: '5단계' })]; },
+    id: 'pledge_energy_nuclear', policy: 'energy', kind: 'goal', title: '공약: 원전 시대', brief: '18년 차 말까지 원자력 비중 65% + 원자력 테크 12단계',
+    short: '18년 차 말에 원전·SMR이 1년 평균 발전량의 65% 이상이고, 원자력 테크가 12단계 이상',
+    meters: (s) => { const sh = shareYear(s, 'nuc'), t = s.tech.nuclear || 0; return [meterOf('원자력 비중', sh, 0.65, { nowText: fmt(sh * 100) + '%', goalText: '65%' }), meterOf('원자력 테크', t, 12, { nowText: t + '단계', goalText: '12단계' })]; },
   },
   {
-    id: 'pledge_energy_thermal', policy: 'energy', months: 120, title: '공약: 깨끗한 화력', brief: '10년 안에 화력 비중 50% + 복합발전·석탄 테크 합쳐 8단계',
-    short: '10년 안에 복합발전·석탄으로 한 달 전기의 50% 이상을 만들고, 복합발전·석탄 테크를 합쳐 8단계 개발',
-    check: (s, r) => thermalShareOf(r) >= 0.5 && thermalTiersOf(s) >= 8,
-    progress: (s) => '화력 ' + (s.lastReport ? fmt(thermalShareOf(s.lastReport) * 100) : '0') + '% / 50% · 테크 ' + thermalTiersOf(s) + ' / 8단계',
-    meters: (s) => { const sh = s.lastReport ? thermalShareOf(s.lastReport) : 0, t = thermalTiersOf(s); return [meterOf('화력 비중', sh, 0.5, { nowText: fmt(sh * 100) + '%', goalText: '50%' }), meterOf('복합발전+석탄 테크', t, 8, { nowText: t + '단계', goalText: '8단계' })]; },
-  },
-  {
-    id: 'pledge_energy_renew', policy: 'energy', months: 120, title: '공약: 재생에너지 전환', brief: '10년 안에 태양광·풍력 비중 40% (각각 10% 이상) + 테크 합쳐 6단계',
-    short: '10년 안에 태양광·풍력으로 한 달 전기의 40% 이상을 만들되 둘 다 10% 이상이 되게 섞고, 태양광·풍력 테크를 합쳐 6단계 개발',
-    check: (s, r) => renShareOf(r) >= 0.4 && renMinShareOf(r) >= 0.1 && renTiersOf(s) >= 6,
-    progress: (s) => { const r = s.lastReport, g = r && r.energy.gen, t = g ? (g.nuclear + g.coal + g.ccgt + g.gt + g.solar + g.wind) || 1 : 1; return '태양광 ' + (g ? fmt(g.solar / t * 100) : '0') + '% + 풍력 ' + (g ? fmt(g.wind / t * 100) : '0') + '% / 40% (각 10%↑) · 테크 ' + renTiersOf(s) + ' / 6단계'; },
+    id: 'pledge_energy_thermal', policy: 'energy', kind: 'goal', title: '공약: 깨끗한 화력', brief: '18년 차 말까지 화력 비중 50% 이상에서 탄소 원단위 0.28 이하 + 복합발전·석탄 테크 합쳐 16단계',
+    short: '18년 차 말에 복합발전·석탄이 1년 평균 발전량의 50% 이상이면서 탄소 원단위(전기 1MWh당 탄소)가 0.28t 이하이고, 복합발전·석탄 테크가 합쳐 16단계 이상',
     meters: (s) => {
-      const r = s.lastReport, g = r && r.energy.gen, tot = g ? (g.nuclear + g.coal + g.ccgt + g.gt + g.solar + g.wind) || 1 : 1;
-      const so = g ? g.solar / tot : 0, wi = g ? g.wind / tot : 0, t = renTiersOf(s);
-      return [meterOf('태양광+풍력 비중', so + wi, 0.4, { nowText: fmt((so + wi) * 100) + '%', goalText: '40%' }),
-              meterOf('적은 쪽 (' + (so <= wi ? '태양광' : '풍력') + ')', Math.min(so, wi), 0.1, { nowText: fmt(Math.min(so, wi) * 100) + '%', goalText: '10%' }),
-              meterOf('태양광+풍력 테크', t, 6, { nowText: t + '단계', goalText: '6단계' })];
+      const th = Math.max(0, 1 - shareYear(s, 'ren') - shareYear(s, 'nuc')), ci = intenYear(s), t = thermalTiersOf(s);
+      return [meterOf('화력 비중', th, 0.5, { nowText: fmt(th * 100) + '%', goalText: '50% 이상' }),
+              meterOf('탄소 원단위', ci, 0.28, { lower: true, ok: ci > 0 && ci <= 0.28, nowText: ci > 0 ? fmt(ci, 2) : '—', goalText: '0.28 이하' }),
+              meterOf('복합발전+석탄 테크', t, 16, { nowText: t + '단계', goalText: '16단계' })];
     },
   },
   {
-    // 자유화의 약속은 "결국 전기값이 내려간다". 기한이 되는 해에 한 번 평가 (선거처럼). 요금 지원으로 맞춰도 인정
-    id: 'pledge_market_free', policy: 'market', months: 96, title: '공약: 경쟁으로 싼 전기', brief: '8년 뒤 소비자 요금이 기대 요금 이하',
-    short: '8년 뒤, 그 직전 1년 동안 국민이 낸 평균 전기 요금(요금 지원 포함)이 기대 요금 이하',
-    fail: (s, r, q) => { const f = feltYearOf(s); return monthIdxOf(s) >= q.deadline && !(f && f.felt <= f.ref * ECON.pledgeFreePriceRatio); },
-    check: (s, r, q) => { const f = feltYearOf(s); return monthIdxOf(s) >= q.deadline && !!f && f.felt <= f.ref * ECON.pledgeFreePriceRatio; },
-    progress: (s) => { const f = feltYearOf(s); return f ? '최근 1년 체감 요금 ' + fmt(f.felt) + '원 / 기대 ' + fmt(f.ref * ECON.pledgeFreePriceRatio) + '원 이하' + (f.felt <= f.ref * ECON.pledgeFreePriceRatio ? ' (지금 기준 통과)' : ' (지금 기준 미달)') : '1년 기록이 쌓이면 표시'; },
-    meters: (s) => { const f = feltYearOf(s); if (!f) return [{ label: '체감 요금 (최근 1년)', now: '—', goal: '1년 기록이 쌓이면 표시', ratio: 0, ok: false }]; const goal = f.ref * ECON.pledgeFreePriceRatio; return [meterOf('체감 요금 (최근 1년)', f.felt, goal, { lower: true, nowText: fmt(f.felt) + '원', goalText: fmt(goal) + '원 이하' })]; },
+    id: 'pledge_energy_renew', policy: 'energy', kind: 'goal', title: '공약: 재생에너지 전환', brief: '18년 차 말까지 태양광·풍력 비중 60% (각각 15% 이상) + 테크 합쳐 16단계',
+    short: '18년 차 말에 태양광·풍력이 1년 평균 발전량의 60% 이상이고 둘 다 15% 이상이며, 태양광·풍력 테크가 합쳐 16단계 이상',
+    meters: (s) => {
+      const so = shareYear(s, 'sol'), wi = shareYear(s, 'win'), t = renTiersOf(s);
+      return [meterOf('태양광+풍력 비중', so + wi, 0.6, { nowText: fmt((so + wi) * 100) + '%', goalText: '60%' }),
+              meterOf('적은 쪽 (' + (so <= wi ? '태양광' : '풍력') + ')', Math.min(so, wi), 0.15, { nowText: fmt(Math.min(so, wi) * 100) + '%', goalText: '15%' }),
+              meterOf('태양광+풍력 테크', t, 16, { nowText: t + '단계', goalText: '16단계' })];
+    },
   },
   {
-    id: 'pledge_market_regulated', policy: 'market', months: 96, title: '공약: 끊기지 않는 전기', brief: '8년 안에 정전 없는 24개월 연속',
-    short: '8년 안에 정전 없는 24개월 연속 달성 (약속한 달부터 셈)',
-    check: (s, r, q) => noBlackoutRunOf(s, q) >= 24,
-    progress: (s, q) => '무정전 ' + noBlackoutRunOf(s, q) + ' / 24개월 연속',
-    meters: (s, q) => { const n = noBlackoutRunOf(s, q); return [meterOf('정전 없는 연속 기간', n, 24, { nowText: n + '개월', goalText: '24개월' })]; },
+    // 자유화의 약속은 "결국 전기값이 내려간다". 요금 지원으로 맞춰도 인정
+    id: 'pledge_market_free', policy: 'market', kind: 'keep', title: '공약: 경쟁으로 싼 전기', brief: '점검 때마다 소비자 요금이 기대 수준 이하',
+    short: '점검 때마다, 그 직전 1년 동안 국민이 낸 평균 전기 요금(요금 지원 포함)이 기대 요금의 ' + Math.round(ECON.pledgeFreePriceRatio * 100) + '% 이하',
+    meters: (s) => { const f = feltYearOf(s); if (!f) return [{ label: '체감 요금 (최근 1년)', now: '—', goal: '1년 기록이 쌓이면 표시', ratio: 0, raw: 0, ok: false }]; const goal = f.ref * ECON.pledgeFreePriceRatio; return [meterOf('체감 요금 (최근 1년)', f.felt, goal, { lower: true, nowText: fmt(f.felt) + '원', goalText: fmt(goal) + '원 이하' })]; },
   },
   {
-    id: 'pledge_industry_growth', policy: 'industry', months: 96, title: '공약: 산업 강국', brief: '8년 안에 최대 전력 수요 2.5배',
-    short: '8년 안에 최대 전력 수요를 지금의 2.5배로 (전기가 넉넉해야 공장과 사람이 들어옵니다)',
-    base: (s) => ({ peak: normPeakOf(s) }),
-    check: (s, r, q) => normPeakOf(s) >= q.base.peak * 2.5,
-    progress: (s, q) => '최대 수요 ' + fmt(normPeakOf(s) / q.base.peak, 2) + '배 / 2.5배',
-    meters: (s, q) => { const v = normPeakOf(s) / q.base.peak; return [meterOf('최대 수요 (약속한 때의 몇 배)', v, 2.5, { from: 1, nowText: fmt(v, 2) + '배', goalText: '2.5배' })]; },
+    id: 'pledge_market_regulated', policy: 'market', kind: 'keep', title: '공약: 끊기지 않는 전기', brief: '점검 때마다 직전 3년 동안 정전 없음',
+    short: '점검 때마다, 그 직전 3년(36개월) 동안 정전이 한 번도 없어야 함 (약속한 달부터 셈)',
+    meters: (s, q) => { const n = noBlackoutRunOf(s, q), need = Math.max(1, Math.min(36, monthIdxOf(s) - q.start + 1)); return [meterOf('정전 없이 지낸 기간', n, need, { nowText: n + '개월', goalText: need + '개월' })]; },
   },
   {
-    id: 'pledge_industry_balance', policy: 'industry', months: 72, title: '공약: 고른 국토', brief: '6년 안에 새 도시 2곳 + 과밀 도시 없음',
-    short: '6년 안에 새 도시 2곳을 세우고, 과밀 도시가 하나도 없게',
+    id: 'pledge_industry_growth', policy: 'industry', kind: 'goal', title: '공약: 산업 강국', brief: '18년 차 말까지 최대 전력 수요 5,500MW',
+    short: '18년 차 말에 최대 전력 수요가 5,500MW 이상 (전기가 넉넉하고 도시가 늘어야 공장과 사람이 들어옵니다)',
+    meters: (s) => { const v = normPeakOf(s); return [meterOf('최대 전력 수요', v, 5500, { nowText: fmt(v) + 'MW', goalText: '5,500MW' })]; },
+  },
+  {
+    id: 'pledge_industry_balance', policy: 'industry', kind: 'keep', title: '공약: 고른 국토', brief: '점검 때마다 새 도시 1곳씩 더 (6년 차 1곳 → 18년 차 4곳) + 과밀 도시 없음',
+    short: '점검 때마다 새 도시가 한 곳씩 더 있어야 하고(첫 점검 1곳, 다음 2곳 …), 과밀 도시가 하나도 없어야 함',
     base: (s) => ({ n: s.cities.length }),
-    check: (s, r, q) => s.cities.length >= q.base.n + 2 && crowdedCitiesOf(s) === 0,
-    progress: (s, q) => '새 도시 ' + Math.min(2, s.cities.length - q.base.n) + ' / 2곳 · 과밀 도시 ' + crowdedCitiesOf(s) + '곳',
-    meters: (s, q) => { const n = Math.max(0, Math.min(2, s.cities.length - q.base.n)), c = crowdedCitiesOf(s); return [meterOf('새 도시', n, 2, { nowText: n + '곳', goalText: '2곳' }), meterOf('과밀 도시', c, 0, { lower: true, nowText: c + '곳', goalText: '0곳' })]; },
+    meters: (s, q) => { const need = Math.min(4, ((q.res || []).length) + 1), n = Math.max(0, s.cities.length - ((q.base && q.base.n) || s.cities.length)), c = crowdedCitiesOf(s); return [meterOf('새 도시 (약속한 뒤)', n, need, { nowText: n + '곳', goalText: need + '곳' }), meterOf('과밀 도시', c, 0, { lower: true, nowText: c + '곳', goalText: '0곳' })]; },
   },
   {
-    id: 'pledge_rd_public', policy: 'rd', months: 72, title: '공약: 과학 기술 입국', brief: '6년 안에 연구소 규모 300',
-    short: '6년 안에 연구소 규모 300 달성 (8단계 연구가 열리는 수준)',
-    check: (s) => rdLevel(s) >= 300,
-    progress: (s) => '연구소 규모 ' + fmt(rdLevel(s)) + ' / 300',
-    meters: (s) => { const lv = rdLevel(s); return [meterOf('연구소 규모', lv, 300, { nowText: fmt(lv), goalText: '300' })]; },
+    id: 'pledge_rd_public', policy: 'rd', kind: 'goal', title: '공약: 과학 기술 입국', brief: '18년 차 말까지 연구소 규모 550',
+    short: '18년 차 말에 연구소 규모 550 이상 (끝 단계 연구에 필요한 380을 훌쩍 넘는 수준)',
+    meters: (s) => { const lv = rdLevel(s); return [meterOf('연구소 규모', lv, 550, { nowText: fmt(lv), goalText: '550' })]; },
   },
   {
-    id: 'pledge_rd_private', policy: 'rd', months: 72, title: '공약: 기술 상용화', brief: '6년 안에 연구 12건 성공',
-    short: '6년 안에 테크 연구 12건 성공',
-    base: (s) => ({ tiers: totalTiers(s) }),
-    check: (s, r, q) => totalTiers(s) - q.base.tiers >= 12,
-    progress: (s, q) => '연구 성공 ' + (totalTiers(s) - q.base.tiers) + ' / 12건',
-    meters: (s, q) => { const n = totalTiers(s) - q.base.tiers; return [meterOf('연구 성공', n, 12, { nowText: n + '건', goalText: '12건' })]; },
+    id: 'pledge_rd_private', policy: 'rd', kind: 'goal', title: '공약: 기술 상용화', brief: '18년 차 말까지 테크 단계 합계 35',
+    short: '18년 차 말에 여섯 테크트리의 단계를 모두 더해 35 이상',
+    meters: (s) => { const n = totalTiers(s); return [meterOf('테크 단계 합계', n, 35, { nowText: n + '단계', goalText: '35단계' })]; },
   },
 ];
-for (const d of PLEDGES) QUESTS.push(Object.assign({ icon: '📜', followup: true, pledge: true, reward: {}, penalty: {}, cond: () => true, desc: d.short + '.' }, d));
+// 한 줄 요약 글 (길잡이 · 툴팁용): 막대 자료를 글로 이음
+function pledgeProgressText(def, s, q) { return def.meters(s, q).map((m) => m.label.replace(/ \(.*?\)$/, '') + ' ' + m.now + ' / ' + m.goal).join(' · '); }
+for (const d of PLEDGES) QUESTS.push(Object.assign({ icon: '📜', followup: true, pledge: true, reward: {}, penalty: {}, cond: () => true, desc: d.short + '.', check: () => false, progress: (s, q) => pledgeProgressText(d, s, q) }, d));
+
+// 달성률과 등급 (PLEDGE_GRADES의 번호). 달성률 = (조건별 진행률의 평균 + 가장 모자란 조건의 진행률) ÷ 2
+//  평균만 보면 주된 조건이 한참 모자라도 다른 조건 덕에 "대체로 이행"이 나와서, 가장 모자란 조건을 절반 반영함
+function pledgeRateOf(ms) {
+  if (!ms.length) return 0;
+  const rs = ms.map((m) => (m.raw !== undefined ? m.raw : (m.ok ? 1 : m.ratio || 0)));
+  return (rs.reduce((a, v) => a + v, 0) / rs.length + Math.min.apply(null, rs)) / 2;
+}
+function pledgeGradeOf(ms) {
+  if (ms.every((m) => m.ok)) return 0;
+  const r = pledgeRateOf(ms);
+  return r >= PLEDGE_GRADES[1].min ? 1 : r >= PLEDGE_GRADES[2].min ? 2 : 3;
+}
+// 새 공약(또는 예전 저장분의 진행 중 공약)에 점검 · 평가 일정을 붙임. deadline = 다음 점검(평가)이 있는 달
+function pledgeInit(state, q, def) {
+  const h = pledgeMonths(state), m0 = gameMonth0(state);
+  if (def.kind === 'keep') {
+    q.res = q.res || [];
+    q.next = PLEDGE_CHECKS.find((c) => c - h >= 12) || null;   // 1년 안에 닥치는 점검은 건너뜀
+    q.deadline = m0 + (q.next || PLEDGE_FINAL) - 1;
+  } else { q.goalAt = PLEDGE_FINAL; q.deadline = m0 + PLEDGE_FINAL - 1; }
+  q.v2 = 1;
+  return q;
+}
+// 이 공약이 지금 민심(미래·신뢰 분야)에 주는 값
+function pledgeMoodOf(q, def) {
+  if (def.term2) return q.status === 'done' ? def.kept : q.status === 'failed' ? -def.broken : 0;
+  if (!q.v2) return q.status === 'done' ? ECON.moodPledgeKept : q.status === 'failed' ? -ECON.moodPledgeBroken : 0;   // 예전 규칙으로 이미 끝난 공약
+  if (def.kind === 'keep') return q.last === 'kept' ? PLEDGE_KEEP.hold : q.last === 'broken' ? -PLEDGE_KEEP.loss : 0;
+  return q.grade === undefined || q.late ? 0 : PLEDGE_GRADES[q.grade].hold;
+}
+// 매달 결산 때: 점검 · 평가할 달이면 판정하고, 어긴 뒤 다시 채웠으면 벌점을 지움
+function pledgeTick(state, q, def, notices) {
+  if (!q.v2) { if (q.status !== 'active') return; pledgeInit(state, q, def); }
+  const h = pledgeMonths(state), name = def.title.replace('공약: ', '');
+  const sg = (v) => (v > 0 ? '+' : '−') + Math.abs(v);
+  const ms = def.meters(state, q), okAll = ms.every((m) => m.ok);
+  if (def.kind === 'keep') {
+    if (q.next && h >= q.next) {
+      const yr = Math.round(q.next / 12);
+      q.res.push(okAll ? 'kept' : 'broken'); q.last = okAll ? 'kept' : 'broken';
+      moodBump(state, okAll ? PLEDGE_KEEP.gain : -PLEDGE_KEEP.hit);
+      const text = '📜 공약 점검 (' + yr + '년 차): ' + name + (okAll ? ' 지킴 · 민심 +' + PLEDGE_KEEP.gain + ', 다음 점검까지 +' + PLEDGE_KEEP.hold : ' 어김 · 민심 −' + PLEDGE_KEEP.hit + ', 다음 점검까지 −' + PLEDGE_KEEP.loss);
+      notices.push(text);
+      const nx = PLEDGE_CHECKS.find((c) => c > h);
+      q.next = nx || null;
+      if (nx) q.deadline = gameMonth0(state) + nx - 1; else { q.status = 'done'; q.endAt = monthIdxOf(state); }
+    } else if (q.last === 'broken' && okAll) { q.last = 'late'; notices.push('📜 뒤늦은 공약 이행: ' + name + ' (남은 벌점이 사라졌습니다)'); }
+    return;
+  }
+  if (q.grade === undefined) {
+    if (h >= q.goalAt) {
+      const gi = pledgeGradeOf(ms), G = PLEDGE_GRADES[gi];
+      q.grade = gi; q.rate = Math.round(pledgeRateOf(ms) * 100); q.shot = ms.map((m) => m.now); q.status = 'done'; q.endAt = monthIdxOf(state);   // shot = 평가 때의 값 (기록용)
+      moodBump(state, G.bump);
+      const text = '📜 공약 평가 (18년 차): ' + name + ' — ' + G.name + ' (달성률 ' + q.rate + '%) · 민심 ' + sg(G.bump) + ', 남은 임기 ' + sg(G.hold);
+      notices.push(text);
+    }
+  } else if (q.grade >= 2 && !q.late && okAll) {   // 평가 때 못 채운 것을 뒤늦게 다 채움: 등급은 그대로, 남은 벌점만 사라짐
+    q.late = true; notices.push('📜 뒤늦은 공약 이행: ' + name + ' (남은 벌점이 사라졌습니다)');
+  }
+}
 
 // ============================================================
 // 재선 공약: 선거 1년 전(9년 차 말)에 발표하는 2기 국정 과제. 후반 10년의 목표
@@ -726,9 +810,9 @@ const TERM2_LEAD_MONTHS = 12;        // 선거 몇 달 전에 공약을 발표�
 const TERM2_DEADLINE_MONTH = 216;    // 18년 차 말 (임기 216번째 달)
 const TERM2_BOOST_FULL = 12, TERM2_BOOST_FADE = 12;   // 공약 기대감: 발표 뒤 12개월은 온전히, 그 뒤 12개월에 걸쳐 사라짐
 const TERM2_LEVELS = [
-  { name: '현실적인 약속', short: '현실적', kept: 2,   broken: 3, hit: 8,  boost: 0 },
-  { name: '과감한 약속',   short: '과감',   kept: 3.5, broken: 5, hit: 12, boost: 2 },
-  { name: '파격적인 약속', short: '파격',   kept: 5,   broken: 7, hit: 16, boost: 4 },
+  { name: '현실적인 약속', short: '현실적', gain: 4, kept: 2,   broken: 3, hit: 8,  boost: 0 },
+  { name: '과감한 약속',   short: '과감',   gain: 6, kept: 3.5, broken: 5, hit: 12, boost: 2 },
+  { name: '파격적인 약속', short: '파격',   gain: 8, kept: 5,   broken: 7, hit: 16, boost: 4 },
 ];
 function avg12Of(s, f) { const h = (s.history || []).slice(-12); return h.length ? h.reduce((a, x) => a + (f(x) || 0), 0) / h.length : 0; }
 // 연구 공약이 보는 트리: 내 노선의 트리 전부 (중립이면 가장 많이 올린 두 트리) + 계통
@@ -773,7 +857,7 @@ for (const T of TERM2_THEMES) TERM2_LEVELS.forEach((L, lv) => {
     id: 'term2_' + T.key + '_' + lv, icon: '🗳', followup: true, pledge: true, term2: true, policy: 'term2', theme: T.key, lv,
     title: '재선 공약: ' + T.title, brief: T.brief(t) + ' (' + L.short + ')', short: '18년 차 말까지, ' + T.brief(t) + ' — ' + L.name,
     desc: '18년 차 말까지, ' + T.brief(t) + '. ' + L.name + '.',
-    kept: L.kept, broken: L.broken, boost: L.boost, reward: {}, penalty: { happy: L.hit }, cond: () => true,
+    gain: L.gain, kept: L.kept, broken: L.broken, boost: L.boost, reward: {}, penalty: { happy: L.hit }, cond: () => true,
     base: T.base,
     check: (s, r, q) => T.ok(T.value(s, q), t, s),
     progress: (s, q) => (T.nowText ? T.nowText(s) : T.fmtV(T.value(s, q))) + ' / ' + T.fmtT(t) + (T.key === 'price' || T.key === 'gas' ? ' 이하' : ''),
@@ -803,24 +887,34 @@ function term2BoostNow(state, q, def) {
   return age < TERM2_BOOST_FULL + TERM2_BOOST_FADE ? def.boost * (TERM2_BOOST_FULL + TERM2_BOOST_FADE - age) / TERM2_BOOST_FADE : 0;
 }
 function isPledgeQuest(q) { const d = questById(q.id); return !!(d && d.pledge); }
+// 지금 이 공약을 새로 약속할 수 있는가 (평가 · 점검까지 1년이 안 남았으면 주지 않음)
+function pledgeAvailable(state, def) { const h = pledgeMonths(state); return def.kind === 'goal' ? PLEDGE_FINAL - h >= 12 : PLEDGE_CHECKS.some((c) => c - h >= 12); }
+// 공약의 평가 방식과 걸린 것 한 줄 (선택 카드 · 툴팁)
+function pledgeStakesText(def) {
+  if (def.term2) return '18년 차 말에 평가 · 지키면 민심 +' + def.gain + '에 남은 임기 +' + def.kept + ' · 못 지키면 −' + def.penalty.happy + '에 남은 임기 −' + def.broken;
+  if (def.kind === 'keep') return '6 · 10 · 14 · 18년 차 말에 점검 · 지키면 민심 +' + PLEDGE_KEEP.gain + '에 다음 점검까지 +' + PLEDGE_KEEP.hold + ' · 어기면 −' + PLEDGE_KEEP.hit + '에 다음 점검까지 −' + PLEDGE_KEEP.loss;
+  const a = PLEDGE_GRADES[0], z = PLEDGE_GRADES[PLEDGE_GRADES.length - 1];
+  return '18년 차 말에 달성 정도로 평가 · 완수하면 민심 +' + a.bump + '에 남은 임기 +' + a.hold + ' · 불이행이면 −' + Math.abs(z.bump) + '에 남은 임기 −' + Math.abs(z.hold);
+}
 // 정책 선택지 설명에 붙는 공약 한 줄
 function pledgeLine(key, opt) {
   const id = POLICIES[key].options[opt].pledge; const d = id && questById(id);
-  return d ? '<br><b>📜 공약</b> ' + d.short + '. 지키면 민심 +' + ECON.moodPledgeKept + '(임기 끝까지), 기한을 넘기면 민심 −' + ECON.moodPledgeBroken + '.' : '';
+  return d ? '<br><b>📜 공약</b> ' + d.short + '. ' + pledgeStakesText(d) + '.' : '';
 }
 // 정책 선택지 한 칸: 민심 → 좋은 점 → 부담 → 공약 순서로 한 줄씩 (긴 설명 대신 핵심만)
 function policyChoiceHtml(s, key, opt) {
   const o = POLICIES[key].options[opt], cur = s.policies && s.policies[key];
   const li = (cls, mark, text) => '<span class="pt ' + cls + '"><i>' + mark + '</i>' + text + '</span>';
   let html = '';
-  if (o.happy) html += li(o.happy > 0 ? 'good' : 'bad', o.happy > 0 ? '+' : '−', '민심 ' + (o.happy > 0 ? '+' : '−') + Math.abs(o.happy) + ' <small>(이 노선을 유지하는 동안)</small>');
+  if (o.happy) html += li(o.happy > 0 ? 'good' : 'bad', o.happy > 0 ? '+' : '−', '민심 ' + (o.happy > 0 ? '+' : '−') + Math.abs(o.happy) + ' <small>(' + (o.happyNote || '이 노선을 유지하는 동안') + ')</small>');
   for (const g of o.good || []) html += li('good', '+', g);
   for (const b of o.bad || []) html += li('bad', '−', b);
-  if (!html) html = li('none', '·', '보너스도 제약도 없음');
+  if (!html) html = li('none', '·', o.plain || '보너스도 제약도 없음');
   const pd = o.pledge && questById(o.pledge);
   if (cur === opt) html += li('none', '·', '지금 노선 유지 (공약도 그대로)');
   else {
-    if (pd) html += '<span class="pt pledge"><i>📜</i>공약: ' + (pd.brief || pd.short) + (pledgeEarlyMonths(s, key) > 0 ? ' <small>(일찍 정해 기한 +' + pledgeEarlyMonths(s, key) + '개월)</small>' : '') + ' <small>지키면 민심 +' + ECON.moodPledgeKept + ' · 어기면 −' + ECON.moodPledgeBroken + '</small></span>';
+    if (pd && !pledgeAvailable(s, pd)) html += li('none', '·', '공약 없음 (평가까지 1년이 안 남아 새 약속은 하지 않음)');
+    else if (pd) html += '<span class="pt pledge"><i>📜</i>공약: ' + (pd.brief || pd.short) + ' <small>' + pledgeStakesText(pd) + '</small></span>';
     else html += li('none', '·', '공약 없음');
     if (cur) html += li('bad', '−', '정책 번복: 민심 −4, 지금 공약은 사라짐');
   }
@@ -832,13 +926,12 @@ function givePledge(state, key, opt) {
   state.quests = state.quests.filter((q) => { const d = questById(q.id); return !(d && d.pledge && d.policy === key); });
   const id = POLICIES[key].options[opt] && POLICIES[key].options[opt].pledge;
   if (!id) return '';
-  const def = questById(id); const now = monthIdxOf(state);
-  // 임기가 얼마 안 남았으면 기한을 줄임 (임기 끝나기 6개월 전까지)
-  const termLeft = (state.mode === 'normal' ? ECON.normalYears : 20) * 12 - (state.history || []).length;
-  // 정책을 정하는 순서가 판마다 달라도 공약이 더 어려워지지는 않게: 기본 시점(POLICIES[key].at)보다 일찍 정했으면 그만큼 기한을 늘림
-  const months = Math.max(12, Math.min(def.months + pledgeEarlyMonths(state, key), termLeft - 6));
-  state.quests.push({ id, start: now, deadline: now + months - 1, status: 'active', base: def.base ? def.base(state) : {} });
-  return ' → 📜 ' + def.title + ' (' + (months % 12 === 0 ? months / 12 + '년' : Math.floor(months / 12) + '년 ' + (months % 12) + '개월') + ' 기한)';
+  const def = questById(id), h = pledgeMonths(state);
+  // 평가(점검)까지 1년도 안 남았으면 새 공약을 주지 않음
+  if (!pledgeAvailable(state, def)) return '';
+  const q = pledgeInit(state, { id, start: monthIdxOf(state), status: 'active', base: def.base ? def.base(state) : {} }, def);
+  state.quests.push(q);
+  return ' → 📜 ' + def.title + (def.kind === 'keep' ? ' (' + Math.round(q.next / 12) + '년 차 말부터 4년마다 점검)' : ' (18년 차 말에 평가)');
 }
 // 이 정책을 기본 시점보다 몇 달 일찍 정하는가 (재검토 때는 0)
 function pledgeEarlyMonths(state, key) { return Math.max(0, POLICIES[key].at - ((state && state.history) || []).length); }
@@ -889,6 +982,15 @@ function updateQuests(state, report) {
   for (const q of state.quests || []) {
     const def = questById(q.id);
     if (!def) continue;
+    if (def.pledge && !def.term2) { pledgeTick(state, q, def, notices); continue; }   // 정책 공약: 점검형은 4년마다, 달성형은 18년 차 말에
+    if (def.term2 && q.status === 'active') {   // 재선 공약: 18년 차 말에 한 번 평가 (그때의 1년 평균). 일찍 채워도 그때까지 지켜야 함
+      if (now >= q.deadline) {
+        const tn = def.title.replace('재선 공약: ', '');
+        if (def.check(state, report, q)) { q.status = 'done'; q.endAt = now; moodBump(state, def.gain || 0); const t = '🎉 재선 공약 이행: ' + tn + ' (민심 +' + (def.gain || 0) + ', 남은 임기 +' + def.kept + ')'; notices.push(t); }
+        else { q.status = 'failed'; q.endAt = now; applyPenalty(state, def); const t = '✕ 재선 공약 불이행: ' + tn + ' (' + penaltyText(def) + ')'; notices.push(t); }
+      }
+      continue;
+    }
     if (def.pledge && q.status === 'failed') {
       if (def.check(state, report, q)) { q.status = 'late'; q.lateAt = now; notices.push('📜 뒤늦은 공약 이행: ' + def.title.replace('공약: ', '') + ' (불이행 벌점이 사라졌습니다)'); }
       continue;
@@ -916,14 +1018,14 @@ function applyPenalty(state, def) {
   if (p.gasShock) addEffect(state, { name: '가스 의존 후폭풍 (연료비 ×1.3)', gasMult: 1.3 }, 3);
 }
 function penaltyText(def) {
-  if (def.pledge) return def.term2 ? '그달 민심 −' + def.penalty.happy + ', 그 뒤로도 −' + def.broken + ' (늦게라도 지키면 뒤의 몫은 사라짐)' : '민심 −' + (def.broken || ECON.moodPledgeBroken) + ' (늦게라도 지키면 사라짐)';
+  if (def.pledge) return def.term2 ? '그달 민심 −' + def.penalty.happy + ', 그 뒤로도 −' + def.broken + ' (늦게라도 지키면 뒤의 몫은 사라짐)' : def.kind === 'keep' ? '점검 때 어기면 민심 −' + PLEDGE_KEEP.hit + ', 다음 점검까지 −' + PLEDGE_KEEP.loss : '불이행이면 민심 −' + Math.abs(PLEDGE_GRADES[3].bump) + ', 남은 임기 −' + Math.abs(PLEDGE_GRADES[3].hold);
   const p = def.penalty || {};
   const parts = [];
   if (p.happy) parts.push('민심 −' + p.happy);
   if (p.text) parts.push(p.text);
   return parts.join(' · ');
 }
-function rewardText(def) { return def.pledge ? '민심 +' + (def.kept || ECON.moodPledgeKept) + ' (임기 끝까지)' : [rewardParts(def.reward), def.rewardNote].filter(Boolean).join(' · '); }
+function rewardText(def) { return def.pledge ? (def.term2 ? '민심 +' + (def.gain || 0) + ', 남은 임기 +' + def.kept : def.kind === 'keep' ? '점검 때 지키면 민심 +' + PLEDGE_KEEP.gain + ', 다음 점검까지 +' + PLEDGE_KEEP.hold : '완수하면 민심 +' + PLEDGE_GRADES[0].bump + ', 남은 임기 +' + PLEDGE_GRADES[0].hold) : [rewardParts(def.reward), def.rewardNote].filter(Boolean).join(' · '); }
 
 // ============================================================
 // 정책 노선: 한 번 정하면 게임 조건이 오래 바뀌어 전략 자체가 갈림. 8년 뒤 재검토(번복하면 지지율 손해)
@@ -933,10 +1035,21 @@ const POLICIES = {
     name: '에너지 정책', icon: '⚡', at: 12,
     desc: '앞으로 어떤 발전을 주력으로 키울지 정합니다. 8년 동안 유지되고, 그 뒤 한 번 다시 고를 수 있습니다.',
     options: {
-      nuclear: { label: '친원전', pledge: 'pledge_energy_nuclear', good: ['원전·SMR 건설비 −25%', '원전이 많아도 불안 절반'], bad: ['원전 사고 타격 1.5배', '반원전 시위가 잦아짐'], desc: '원전·SMR 건설비 −25% · 원전 밀집 불안 절반 · 원전 사고 타격 1.5배' },
-      thermal: { label: '화력 중심', pledge: 'pledge_energy_thermal', good: ['복합발전·석탄 건설비 −20%', '화력 연료비 −10%'], bad: ['환경 점수를 거의 못 받음 (쉽지만 고점이 낮은 길)'], desc: '복합발전·석탄 건설비 −20% · 화력 연료비 −10% · 쉽지만 탄소 때문에 환경 점수를 거의 못 받아 고점이 낮음' },
-      renew:   { label: '재생에너지 중심', happy: 1, pledge: 'pledge_energy_renew', good: ['태양광·풍력·배터리 건설비 −20%', '땅을 많이 써도 불만 절반'], bad: ['원전·SMR 건설비 +20%'], desc: '태양광·풍력·배터리 건설비 −20% · 국토 잠식 불만 절반 · 원전·SMR 건설비 +20% · 민심 +1' },
-      neutral: { label: '중립', desc: '보너스도 제약도 없음' },
+      // 글 쓰는 법: 점수 이야기("환경 점수를 못 받음", "고점이 낮은 길")가 아니라 실제 정책의 특성처럼 적음.
+      //  <small>…</small> 안은 그 효과가 생기는 까닭 (선택 카드에만 보이고, 정책 탭의 한 줄 요약에서는 빠짐)
+      nuclear: { label: '친원전', pledge: 'pledge_energy_nuclear',
+        good: ['원전·SMR 건설비 −25% <small>(금융 지원 · 인허가 단축)</small>', '원전이 늘어도 주민 불안 절반 <small>(주변 지역 지원)</small>'],
+        bad: ['원전 사고가 나면 타격 1.5배 <small>(정부 책임론)</small>', '탈원전 단체의 반대 시위가 잦아짐'],
+        desc: '원전·SMR 건설비 −25% · 원전이 늘어도 주민 불안 절반 · 원전 사고가 나면 타격 1.5배 · 탈원전 단체의 반대 시위가 잦아짐' },
+      thermal: { label: '화력 중심', pledge: 'pledge_energy_thermal',
+        good: ['복합발전·석탄 건설비 −20% <small>(인허가 간소화)</small>', '화력 연료비 −10% <small>(장기 도입 계약)</small>'],
+        bad: ['탄소 배출이 많음 <small>(해마다 오르는 탄소세 · 환경 불만)</small>', '연료를 수입에 의존 <small>(가스·석탄값이 뛰면 부담)</small>'],
+        desc: '복합발전·석탄 건설비 −20% · 화력 연료비 −10% · 탄소 배출이 많아 해마다 오르는 탄소세와 환경 불만이 부담 · 연료를 수입에 의존' },
+      renew:   { label: '재생에너지 중심', happy: 1, happyNote: '친환경 전환에 대한 지지', pledge: 'pledge_energy_renew',
+        good: ['태양광·풍력·배터리 건설비 −20% <small>(보조금 · 입지 규제 완화)</small>', '넓은 부지를 써도 주민 불만 절반 <small>(발전 수익 공유)</small>'],
+        bad: ['원전·SMR 건설비 +20% <small>(원전 지원 축소)</small>', '날씨에 따라 출력이 달라짐 <small>(배터리 · 조절 전원이 함께 필요)</small>'],
+        desc: '민심 +1 · 태양광·풍력·배터리 건설비 −20% · 넓은 부지를 써도 주민 불만 절반 · 원전·SMR 건설비 +20% · 날씨에 따라 출력이 달라짐' },
+      neutral: { label: '중립', plain: '어느 전원도 따로 밀지 않음 <small>(지원도 부담도 없음)</small>', desc: '어느 전원도 따로 밀지 않음 · 지원도 부담도 없음' },
     },
   },
   market: {

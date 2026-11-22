@@ -557,9 +557,8 @@ function renderGuide(state) {
   const pledges = (state.quests || []).map((q) => ({ q, def: questById(q.id) })).filter((x) => x.def && x.def.pledge);
   const main = pledges.find((x) => x.def.term2) || pledges.find((x) => x.def.policy === 'energy') || pledges.filter((x) => x.q.status === 'active').sort((a, b) => a.q.deadline - b.q.deadline)[0] || pledges[0];
   if (main) {
-    const left = main.q.deadline - now + 1, stt = main.q.status;
-    const st = stt === 'done' ? ['good', '지킴 · 민심 +' + (main.def.kept || ECON.moodPledgeKept)] : stt === 'failed' ? ['bad', '기한 지남 · 민심 −' + (main.def.broken || ECON.moodPledgeBroken)] : stt === 'late' ? ['muted', '늦게 지킴'] : [left <= 12 ? 'bad' : 'muted', left <= 0 ? '이번 달 결산에서 판정' : dur(left) + ' 남음'];
-    html += '<div class="g-pledge" title="' + esc(main.def.short) + '"><div class="t"><span>' + (main.def.term2 ? '🗳 재선 공약 · ' : '📜 ') + main.def.title.replace('재선 공약: ', '').replace('공약: ', '') + '</span><small class="' + st[0] + '">' + st[1] + '</small></div>' +
+    const stt = main.q.status, st = pledgeStateOf(state, main.q, main.def);
+    html += '<div class="g-pledge" title="' + esc(main.def.short + '. ' + pledgeStakesText(main.def) + '.') + '"><div class="t"><span>' + (main.def.term2 ? '🗳 재선 공약 · ' : '📜 ') + main.def.title.replace('재선 공약: ', '').replace('공약: ', '') + '</span><small class="' + st[0] + '">' + st[1] + '</small></div>' +
       (stt === 'active' || stt === 'failed' ? '<div class="p">' + main.def.progress(state, main.q) + '</div>' : '') + '</div>';
   }
   // 3) 신경 쓸 것: 전력 수급 경고 → 임박한 기한 → 민심을 크게 깎는 요인 순으로 최대 3개
@@ -842,7 +841,7 @@ function renderReport(report) {
   if (e.rampShort > 0) ev += '<span class="ev bad">램프 부족 (출력을 제때 못 올림) ' + fmtMWh(e.rampShort) + '</span>';
   if (e.over > 0) ev += '<span class="ev warn">과잉 발전 ' + fmtMWh(e.over) + '</span>';
   for (const n of report.notices || []) ev += '<span class="ev warn">' + n + '</span>';
-  for (const n of report.questNotices || []) ev += '<span class="ev ' + (n.startsWith('✕') ? 'bad' : 'good') + '">' + n + '</span>';
+  for (const n of report.questNotices || []) ev += '<span class="ev ' + (n.startsWith('✕') || /어김|미흡|불이행/.test(n) ? 'bad' : 'good') + '">' + n + '</span>';
   evRoot.innerHTML = ev;
 
   drawReportChart(report);
@@ -1165,10 +1164,10 @@ const HAPPY_CAUSE = {
   gas:       ['가스 의존', '가스 발전에 너무 기대면 겨울에는 난방용 가스가 모자라고, 가스값이 뛸 때는 부담이 그대로 돌아옵니다. 석탄·원자력·태양광·풍력을 섞어 가스 발전 비중을 절반 가까이로 낮추세요.'],
   tech:      ['뒤처진 연구', '국민의 기대는 해마다 올라갑니다. 내 노선의 테크(화력은 복합발전·석탄, 재생에너지는 태양광·풍력, 원자력은 원자력)와 계통 테크를 꾸준히 올리세요. 트리가 둘인 노선은 두 설비를 모두 지어야 온전히 반영됩니다.'],
   'pledge:term2':    ['재선 공약 불이행', '선거 전에 약속한 국정 과제를 18년 차 말까지 지키지 못했습니다. 재선 공약은 1년 평균으로 판정하니, 발표한 때부터 그 방향으로 설비와 테크를 몰아야 합니다. 과감한 약속일수록 못 지켰을 때 타격이 큽니다.'],
-  'pledge:energy':   ['에너지 정책 공약 불이행', '정책을 고를 때 한 약속을 기한 안에 못 지켰습니다. 늦게라도 지키면 벌점은 사라집니다.'],
-  'pledge:market':   ['전력시장 정책 공약 불이행', '정책을 고를 때 한 약속을 기한 안에 못 지켰습니다. 늦게라도 지키면 벌점은 사라집니다.'],
-  'pledge:industry': ['산업 정책 공약 불이행', '정책을 고를 때 한 약속을 기한 안에 못 지켰습니다. 늦게라도 지키면 벌점은 사라집니다.'],
-  'pledge:rd':       ['R&D 정책 공약 불이행', '정책을 고를 때 한 약속을 기한 안에 못 지켰습니다. 늦게라도 지키면 벌점은 사라집니다.'],
+  'pledge:energy':   ['에너지 정책 공약 불이행', '정책을 고를 때 한 약속을 점검·평가 때 지키지 못했습니다. 점검형은 4년마다, 달성형은 18년 차 말에 보니 정책 탭의 막대를 임기 후반까지 챙기세요.'],
+  'pledge:market':   ['전력시장 정책 공약 불이행', '정책을 고를 때 한 약속을 점검·평가 때 지키지 못했습니다. 점검형은 4년마다, 달성형은 18년 차 말에 보니 정책 탭의 막대를 임기 후반까지 챙기세요.'],
+  'pledge:industry': ['산업 정책 공약 불이행', '정책을 고를 때 한 약속을 점검·평가 때 지키지 못했습니다. 점검형은 4년마다, 달성형은 18년 차 말에 보니 정책 탭의 막대를 임기 후반까지 챙기세요.'],
+  'pledge:rd':       ['R&D 정책 공약 불이행', '정책을 고를 때 한 약속을 점검·평가 때 지키지 못했습니다. 점검형은 4년마다, 달성형은 18년 차 말에 보니 정책 탭의 막대를 임기 후반까지 챙기세요.'],
   nukes:     ['원전 밀집 불안', '대형 원전은 2기째부터, SMR은 4기째부터 불안이 커집니다. 친원전 노선이면 절반으로 줄어듭니다.'],
   land:      ['태양광·풍력의 국토 잠식', '땅을 너무 많이 차지하면 불만이 생깁니다. 테크로 한 기당 출력을 키우거나, 풍력을 바다 위로 보내거나, 재생에너지 중심 노선으로 절반을 줄이세요.'],
   tariff:    ['요금 할증', '요금 할증은 돈이 급할 때만 쓰고, 여유가 생기면 표준이나 지원으로 돌리세요.'],
@@ -1655,6 +1654,36 @@ function pledgeMetersHtml(def, state, q) {
     '<div class="pm' + (m.ok ? ' ok' : '') + '"><span class="l">' + m.label + '</span><span class="bar"><i style="width:' + Math.round(m.ratio * 100) + '%"></i></span>' +
     '<span class="v"><b>' + m.now + '</b><small> / ' + m.goal + '</small></span><span class="c">' + (m.ok ? '✓' : '') + '</span></div>').join('') + '</div>';
 }
+// 공약의 상태 한 줄: [색, 글] (정책 칸 · 길잡이 공통)
+function pledgeStateOf(state, q, def) {
+  const now = state.year * 12 + state.month, left = q.deadline - now + 1;
+  const dur = (m) => (m > 24 ? Math.floor(m / 12) + '년' + (m % 12 ? ' ' + (m % 12) + '개월' : '') : m + '개월');
+  const sg = (v) => (v > 0 ? '+' : '−') + Math.abs(v);
+  if (def.term2) return q.status === 'done' ? ['good', '지킴 · 민심 +' + def.kept] : q.status === 'failed' ? ['bad', '못 지킴 · 민심 −' + def.broken] : q.status === 'late' ? ['muted', '늦게 지킴 · 벌점 없음']
+    : [left <= 24 ? 'bad' : 'warn', left <= 0 ? '이번 달 결산에서 평가' : '18년 차 말 평가 · ' + dur(left) + ' 남음'];
+  if (!q.v2) return q.status === 'done' ? ['good', '지킴 · 민심 +' + ECON.moodPledgeKept] : q.status === 'failed' ? ['bad', '기한 지남 · 민심 −' + ECON.moodPledgeBroken] : q.status === 'late' ? ['muted', '늦게 지킴 · 벌점 없음'] : ['warn', '진행 중'];
+  if (def.kind === 'keep') {
+    if (q.next) return [left <= 12 ? 'bad' : 'warn', Math.round(q.next / 12) + '년 차 말 점검 · ' + (left <= 0 ? '이번 달' : dur(left) + ' 남음')];
+    return q.last === 'kept' ? ['good', '마지막 점검 지킴 · 민심 ' + sg(PLEDGE_KEEP.hold)] : q.last === 'late' ? ['muted', '뒤늦게 지킴 · 벌점 없음'] : ['bad', '마지막 점검 어김 · 민심 ' + sg(-PLEDGE_KEEP.loss)];
+  }
+  if (q.grade !== undefined) { const G = PLEDGE_GRADES[q.grade]; return q.late ? ['muted', '평가: ' + G.name + ' → 뒤늦게 이행 · 벌점 없음'] : [G.hold > 0 ? 'good' : 'bad', '평가: ' + G.name + ' · 민심 ' + sg(G.hold)]; }
+  return [left <= 24 ? 'bad' : 'warn', left <= 0 ? '이번 달 결산에서 평가' : '18년 차 말 평가 · ' + dur(left) + ' 남음'];
+}
+// 공약 카드의 둘째 줄: 점검형은 지난 점검 결과와 지금 상태, 달성형은 지금 달성률과 이대로면 받을 등급
+function pledgeNowHtml(state, q, def) {
+  if (def.term2 || !q.v2 || !def.meters) return '';
+  const sg = (v) => (v > 0 ? '+' : '−') + Math.abs(v);
+  const ms = def.meters(state, q);
+  if (def.kind === 'keep') {
+    const past = (q.res || []).map((r) => '<i class="' + (r === 'kept' ? 'good' : 'bad') + '">' + (r === 'kept' ? '✓' : '✕') + '</i>').join('');
+    const okNow = ms.every((m) => m.ok);
+    return '<div class="pm-now">' + (past ? '<span>지난 점검 ' + past + '</span>' : '<span>4년마다 점검</span>') +
+      '<span>' + (q.next ? '지금 점검받으면 ' : '지금 ') + '<b class="' + (okNow ? 'good' : 'bad') + '">' + (okNow ? '지킴 ' + sg(PLEDGE_KEEP.gain) : '어김 ' + sg(-PLEDGE_KEEP.hit)) + '</b></span></div>';
+  }
+  if (q.grade !== undefined) return '<div class="pm-now"><span>평가 때 달성률 <b>' + q.rate + '%</b></span></div>';
+  const G = PLEDGE_GRADES[pledgeGradeOf(ms)], rate = Math.round(pledgeRateOf(ms) * 100);
+  return '<div class="pm-now"><span>지금 달성률 <b>' + rate + '%</b></span><span>이대로면 <b class="' + (G.hold > 0 ? 'good' : 'bad') + '">' + G.name + ' ' + sg(G.bump) + '</b></span></div>';
+}
 function renderPolicyPanel(state) {
   const el = document.getElementById('policy-info');
   if (!el || !state) return;
@@ -1666,7 +1695,7 @@ function renderPolicyPanel(state) {
     const P = POLICIES[k];
     const chosen = pol[k], opt = chosen && P.options[chosen];
     const due = Math.max(0, policyAtOf(state, k) - (now - start));
-    const fxText = opt ? (opt.good || []).concat(opt.bad || []).join(' · ') : '';
+    const fxText = opt ? (opt.good || []).concat(opt.bad || []).map((t) => t.replace(/\s*<small>.*?<\/small>/g, '')).join(' · ') : (opt && opt.plain ? opt.plain.replace(/\s*<small>.*?<\/small>/g, '') : '');
     html += '<div class="pol-row"><span class="n">' + P.icon + ' ' + (POLICY_SHORT[k] || P.name) + '</span>' +
       (opt ? '<span class="v" title="' + (opt.desc || '').replace(/"/g, '&quot;') + '">' + opt.label + (opt.happy ? ' <small class="' + (opt.happy > 0 ? 'good' : 'bad') + '">민심 ' + (opt.happy > 0 ? '+' : '−') + Math.abs(opt.happy) + '</small>' : '') + '</span>'
            : '<span class="v muted">미정' + (due !== null ? ' · ' + (due <= 0 ? '곧 결정' : due + '개월 뒤 결정') : '') + '</span>') + '</div>';
@@ -1674,21 +1703,20 @@ function renderPolicyPanel(state) {
     // 이 정책의 공약: 제목 · 상태 · 진행
     const pq = (state.quests || []).find((q) => { const d = questById(q.id); return d && d.pledge && d.policy === k; });
     if (pq) {
-      const d = questById(pq.id); const left = pq.deadline - now + 1;
-      const durP = left > 24 ? Math.floor(left / 12) + '년' + (left % 12 ? ' ' + (left % 12) + '개월' : '') : left + '개월';
-      const st = pq.status === 'done' ? ['good', '지킴 · 민심 +' + ECON.moodPledgeKept] : pq.status === 'failed' ? ['bad', '기한 지남 · 민심 −' + ECON.moodPledgeBroken] : pq.status === 'late' ? ['muted', '늦게 지킴 · 벌점 없음'] : [left <= 12 ? 'bad' : 'warn', durP + ' 남음'];
-      html += '<div class="pol-pledge' + (pq.status === 'failed' ? ' broken' : '') + '" title="' + (d.short + '.').replace(/"/g, '&quot;') + '"><div class="t"><span>📜 ' + d.title.replace('공약: ', '') + '</span><small class="' + st[0] + '">' + st[1] + '</small></div>' +
-        (pq.status === 'active' || pq.status === 'failed' ? pledgeMetersHtml(d, state, pq) : '') + '</div>';
+      const d = questById(pq.id), st = pledgeStateOf(state, pq, d);
+      const bad = pq.v2 ? pledgeMoodOf(pq, d) < 0 : pq.status === 'failed';
+      const bars = pq.v2 || pq.status === 'active' || pq.status === 'failed';   // 평가가 끝난 뒤에도 막대는 보임 (뒤늦게 채울 수 있음)
+      html += '<div class="pol-pledge' + (bad ? ' broken' : '') + '" title="' + (d.short + '. ' + pledgeStakesText(d) + '.').replace(/"/g, '&quot;') + '"><div class="t"><span>📜 ' + d.title.replace('공약: ', '') +
+        (d.kind ? ' <em class="pk">' + (d.kind === 'keep' ? '점검형' : '달성형') + '</em>' : '') + '</span><small class="' + st[0] + '">' + st[1] + '</small></div>' +
+        (bars ? pledgeNowHtml(state, pq, d) + pledgeMetersHtml(d, state, pq) : '') + '</div>';
     }
   }
   {
     const tq = (state.quests || []).find((q) => { const d = questById(q.id); return d && d.term2; });
     if (tq) {
-      const d = questById(tq.id); const left = tq.deadline - now + 1;
-      const durP = left > 24 ? Math.floor(left / 12) + '년' + (left % 12 ? ' ' + (left % 12) + '개월' : '') : left + '개월';
-      const st = tq.status === 'done' ? ['good', '지킴 · 민심 +' + d.kept] : tq.status === 'failed' ? ['bad', '못 지킴 · 민심 −' + d.broken] : tq.status === 'late' ? ['muted', '늦게 지킴 · 벌점 없음'] : [left <= 24 ? 'bad' : 'warn', durP + ' 남음'];
+      const d = questById(tq.id), st = pledgeStateOf(state, tq, d);
       html = '<div class="pol-row"><span class="n">🗳 재선 공약</span><span class="v">' + d.title.replace('재선 공약: ', '') + '</span></div>' +
-        '<div class="pol-pledge' + (tq.status === 'failed' ? ' broken' : '') + '" title="' + (d.short + '. 지키면 임기 끝까지 민심 +' + d.kept + ', 못 지키면 그달 민심 −' + d.penalty.happy + ', 그 뒤로도 −' + d.broken + '.').replace(/"/g, '&quot;') + '"><div class="t"><span>' + d.brief + '</span><small class="' + st[0] + '">' + st[1] + '</small></div>' +
+        '<div class="pol-pledge' + (tq.status === 'failed' ? ' broken' : '') + '" title="' + (d.short + '. ' + pledgeStakesText(d) + '.').replace(/"/g, '&quot;') + '"><div class="t"><span>' + d.brief + '</span><small class="' + st[0] + '">' + st[1] + '</small></div>' +
         (tq.status === 'active' || tq.status === 'failed' ? pledgeMetersHtml(d, state, tq) : '') + '</div>' + html;
     }
   }
@@ -1716,7 +1744,8 @@ function renderPolicyPanel(state) {
     for (const d of state.decisionLog || []) { const def = decisionById(d.id); log.push({ at: d.at, text: (def ? def.icon + ' ' + def.name : d.id) + ' → <b>' + d.choice + '</b>' }); }
     for (const q of (state.quests || [])) if (q.status !== 'active') {
       const def = questById(q.id); const pl = !!(def && def.pledge);
-      const head = q.status === 'done' ? (pl ? '📜 공약 지킴: ' : '🎉 달성: ') : q.status === 'late' ? '📜 늦게 지킨 공약: ' : (pl ? '✕ 공약 못 지킴: ' : '✕ 실패: ');
+      let head = q.status === 'done' ? (pl ? '📜 공약 지킴: ' : '🎉 달성: ') : q.status === 'late' ? '📜 늦게 지킨 공약: ' : (pl ? '✕ 공약 못 지킴: ' : '✕ 실패: ');
+      if (pl && q.v2 && !def.term2) head = def.kind === 'keep' ? '📜 공약 마지막 점검 (' + (q.last === 'kept' ? '지킴' : q.last === 'late' ? '뒤늦게 지킴' : '어김') + '): ' : '📜 공약 평가 (' + (q.grade !== undefined ? PLEDGE_GRADES[q.grade].name : '-') + '): ';
       log.push({ at: (q.status === 'late' ? q.lateAt : q.endAt) || q.deadline, text: head + (def ? def.title.replace('공약: ', '') : q.id) });
     }
     log.sort((a, b) => b.at - a.at);

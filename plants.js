@@ -272,7 +272,7 @@ const ECON = {
   moodPledgeKept: 1, moodPledgeBroken: 2,
   // 산지 태양광: 숲을 베어 낸 만큼 탄소 흡수가 줄어, 그 발전량 1MWh마다 이만큼(t)을 배출한 것으로 셈 (복합발전의 절반쯤)
   solarMountainCo2: 0.18,
-  pledgeFreePriceRatio: 1.0,   // 시장 자유화 공약: 기한이 되는 해의 평균 체감 요금이 기대 요금의 이 배율 이하
+  pledgeFreePriceRatio: 1.05,   // 시장 자유화 공약: 기한이 되는 해의 평균 체감 요금이 기대 요금의 이 배율 이하
 
   // 점수: 매달 민심만큼 쌓이고, 이 달 번호부터는 한 달이 scoreLateWeight배로 쳐짐
   scoreLateFrom: 120,

@@ -581,13 +581,13 @@ function happinessChange(state, report) {
       const opt = def && def.options[state.policies[key]];
       if (opt && opt.happy) parts.push(part('policy:' + key, def.name + ' · ' + opt.label, opt.happy));
     }
-    // 정책 공약 · 재선 공약: 지키면 +, 기한을 넘기면 − (늦게라도 지키면 벌점만 사라짐). 노선을 바꾸면 그 공약은 없어짐
+    // 정책 공약 · 재선 공약: 점검 · 평가 결과에 따라 +/− (events.js pledgeMoodOf). 노선을 바꾸면 그 공약은 없어짐
     for (const q of state.quests || []) {
       const def = (typeof questById === 'function') ? questById(q.id) : null;
       if (!def || !def.pledge) continue;
       const tname = def.title.replace('재선 공약: ', '').replace('공약: ', '');
-      if (q.status === 'done') parts.push(part('pledge:' + def.policy, (def.term2 ? '재선 공약 이행 · ' : '공약 이행 · ') + tname, def.kept || ECON.moodPledgeKept));
-      else if (q.status === 'failed') parts.push(part('pledge:' + def.policy, (def.term2 ? '재선 공약 불이행 · ' : '공약 불이행 · ') + tname, -(def.broken || ECON.moodPledgeBroken)));
+      const pv = (typeof pledgeMoodOf === 'function') ? pledgeMoodOf(q, def) : 0;   // 점검형: 마지막 점검 결과 · 달성형: 18년 차 말 평가 등급 · 재선 공약: 지킴/못 지킴
+      if (pv) parts.push(part('pledge:' + def.policy, (def.term2 ? '재선 공약 ' : '공약 ') + (pv > 0 ? '이행 · ' : '불이행 · ') + tname, pv));
     }
     // 공약 기대감: 재선 공약을 과감하게 발표하면 한동안 오름 (선거에 도움). 시간이 지나면 사라짐
     for (const q of state.quests || []) {
