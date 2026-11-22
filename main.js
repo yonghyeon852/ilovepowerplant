@@ -69,7 +69,7 @@ function newGame(mode) {
     lastReport: null, history: [],
     selectedId: null, cleanStreak: 0,
     happiness: ECON.happinessStart,
-    mood: { outage: 0, buzz: 0 }, // 민심 계산용 기억 (최근 정전 · 사건과 목표가 남긴 여론)
+    mood: { powerLoss: 0, buzz: 0 }, // 민심 계산용 (정전으로 깎인 전력 공급 점수 · 사건과 목표가 남긴 여론)
     scoreAcc: 0,                  // 지금까지 쌓은 점수
     tariff: 0, tariffSetAt: -999, // 전기요금 조정 단계(−2~+2)와 마지막으로 바꾼 달
     tech: emptyTech(), techPity: {}, techLog: [],
@@ -1339,7 +1339,7 @@ function flashTab(msg) {
 // ------------------------------------------------------------
 const GLOSSARY = [
   ['국정운영 점수', '20년 동안의 민심을 쌓은 값입니다. 매달 그달의 민심만큼 쌓이고, 11년 차부터는 한 달이 ' + ECON.scoreLateWeight + '배로 쳐집니다. 전력 공급, 요금, 환경, 도시, 연구는 따로 점수가 없고 전부 민심의 다섯 분야를 통해 반영됩니다.'],
-  ['민심의 다섯 분야', '민심(0~100)은 다섯 분야의 점수를 더한 값입니다. 분야마다 ' + ECON.moodPillarMax + '점이 만점입니다. ① 전력 공급: 정전이 없으면 만점이고, 정전이 나면 여러 달 깎입니다. ② 전기 요금: 국민이 내는 요금이 기대 요금과 같으면 10점, 쌀수록 오릅니다. ③ 환경: 전기를 만들 때 나오는 탄소가 0이면 만점, 탄소 기준 이상이면 0점입니다. ④ 도시·생활: 일자리(인구 증가) · 전력 수출 · 주거 여유(새 도시)에서 주민 불만(기피 시설 · 원전 불안 · 국토 잠식)을 뺍니다. ⑤ 미래·신뢰: 연구와, 정책 · 공약을 지키는 것입니다. 모든 분야가 만점이어야 100이라서 한두 분야만 잘해서는 높이 올라가지 않습니다.'],
+  ['민심의 다섯 분야', '민심(0~100)은 다섯 분야의 점수를 더한 값입니다. 분야마다 ' + ECON.moodPillarMax + '점이 만점입니다. ① 전력 공급: 정전이 없으면 만점입니다. 정전이 난 달에는 전기가 끊긴 1시간대마다 ' + ECON.moodPowerPerHour + '점씩 깎이고(0점 밑으로는 내려가지 않음), 정전이 없는 달마다 ' + ECON.moodPowerRecover + '점씩 돌아옵니다. ② 전기 요금: 국민이 내는 요금이 기대 요금과 같으면 10점, 쌀수록 오릅니다. ③ 환경: 전기를 만들 때 나오는 탄소가 0이면 만점, 탄소 기준 이상이면 0점입니다. ④ 도시·생활: 일자리(인구 증가) · 전력 수출 · 주거 여유(새 도시)에서 주민 불만(기피 시설 · 원전 불안 · 국토 잠식)을 뺍니다. ⑤ 미래·신뢰: 연구와, 정책 · 공약을 지키는 것입니다. 모든 분야가 만점이어야 100이라서 한두 분야만 잘해서는 높이 올라가지 않습니다.'],
   ['예상 민심', '지금 나라 상태가 그대로 이어지면 민심이 다다르게 될 값입니다. 위쪽 막대의 민심 옆에 작게 적혀 있습니다. 다섯 분야 점수의 합에 "여론"을 더한 값이고, 민심은 매달 이 값 쪽으로 차이의 ' + Math.round(ECON.moodPull * 100) + '%만큼 움직입니다. 설비를 짓거나 요금이 바뀌면 예상 민심이 먼저 바뀌고, 민심이 두세 달에 걸쳐 따라갑니다.'],
   ['여론', '사건 카드의 선택이나 목표의 보상 · 벌칙처럼 민심을 한 번에 올리거나 내린 일이 남긴 여운입니다. 그 자리에서 민심이 바로 움직이고, 같은 크기가 예상 민심에도 얹혔다가 매달 ' + Math.round((1 - ECON.moodBuzzDecay) * 100) + '%씩 옅어집니다.'],
   ['주거 여유 · 새 도시', '도시·생활 분야의 점수 가운데 하나(' + ECON.moodHousingMax + '점)로, 전국 평균 인구 밀도로 매깁니다. 칸당 ' + ECON.housingComfort + '만 명 이하면 만점이고 과밀 기준인 ' + ECON.densityLimit + '만 명이면 0점입니다. 인구는 계속 늘어나므로 새 도시를 세워야 유지됩니다. 새 도시를 세우면 밖에서 사람이 들어와(전국 인구의 ' + Math.round(ECON.cityNewcomerShare * 100) + '% 또는 ' + Math.round(ECON.cityNewcomers * ECON.densityLimit * ECON.cityTiles) + '만 명 가운데 큰 쪽) 전력 수요도 그만큼 늘어납니다. 전기가 남을 때 수요를 끌어오는 방법이기도 합니다.'],
@@ -1547,7 +1547,7 @@ function loadGame() {
     if (!state.view) state.view = { col: 0, row: 0 };
     fullMapView();   // 이어하기도 지도 전체가 보이는 화면에서 시작
     for (const b of state.buildings) if (b.age === undefined) b.age = 0;
-    if (!state.mood) state.mood = { outage: 0 };
+    if (!state.mood) state.mood = { powerLoss: 0 };
     if (state.tariff === undefined) { state.tariff = 0; state.tariffSetAt = -999; }
     if (state.scoreAcc === undefined) state.scoreAcc = scoreFromHistory(state.history);
     return true;

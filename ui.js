@@ -533,7 +533,7 @@ function renderForecast(state) {
 // 길잡이: 내 노선 · 대표 공약 · 지금 신경 쓸 것(최대 3개)만. 자세한 숫자는 전망·정책 탭에
 // ------------------------------------------------------------
 const GUIDE_TIP = {
-  power: '조절 전원을 넉넉히 (정전은 여러 달 남음)', price: '싼 전원 늘리기 · 요금 지원 · 남는 설비 줄이기', env: '태양광·풍력·원전 비중 늘리기',
+  power: '조절 전원을 넉넉히 (정전 없는 달마다 ' + ECON.moodPowerRecover + '점 회복)', price: '싼 전원 늘리기 · 요금 지원 · 남는 설비 줄이기', env: '태양광·풍력·원전 비중 늘리기',
   city: '새 도시 · 수출 · 기피 시설은 도시에서 멀리', future: '내 노선 테크 연구 · 공약 지키기',
   housing: '새 도시 세우기 (사람도 더 들어옴)', nuisance: '기피 시설을 도시에서 멀리', nukes: '안전 테크 · 대형 원전 위주로', land: '테크로 출력 키우기 · 풍력은 바다로', pledge: '늦게라도 지키면 사라짐',
 };
@@ -1149,7 +1149,7 @@ function scoreBreakdownHtml(s) {
 
 // 엔딩 원인 분석: 한두 줄로 "왜 이렇게 끝났는지"
 const HAPPY_CAUSE = {
-  power:  ['정전 (전력 공급 분야)', '정전은 한 번 나면 여러 달 점수에 남습니다. 한 해 최대 수요보다 10~20% 넉넉한 조절 전원을 미리 지어 두고, 석탄·원자력만으로 채우지 말고 복합발전이나 배터리를 섞으세요.'],
+  power:  ['정전 (전력 공급 분야)', '정전이 난 달에는 전력 공급 점수가 크게 깎이고, 정전 없는 달마다 ' + ECON.moodPowerRecover + '점씩 돌아옵니다. 한 해 최대 수요보다 10~20% 넉넉한 조절 전원을 미리 지어 두고, 석탄·원자력만으로 채우지 말고 복합발전이나 배터리를 섞으세요.'],
   env:    ['탄소 배출 (환경 분야)', '환경 점수는 전기를 만들 때 나오는 탄소가 0에 가까울수록 높습니다. 화력은 테크를 올려도 탄소 기준을 넘기 쉽습니다. 태양광·풍력·원자력 같은 무탄소 전원을 섞으세요.'],
   city:   ['도시·생활 분야', '인구가 늘면 도시가 빽빽해집니다. 새 도시를 세워 주거 여유를 지키고, 기피 시설(석탄·풍력·원전)은 도시에서 멀리 두세요. 남는 전기를 수출하면 점수가 더 오릅니다.'],
   future: ['연구와 공약 (미래·신뢰 분야)', '국민의 기대는 해마다 올라갑니다. 내 노선의 테크와 계통 테크를 꾸준히 올리고, 정책을 고를 때 한 약속을 기한 안에 지키세요.'],
@@ -1159,7 +1159,7 @@ const HAPPY_CAUSE = {
   crowd:     ['도시 과밀', '도시 탭에서 새 도시를 세워 인구를 나누면 바로 풀립니다.'],
   price:     ['비싼 전기 요금 (전기 요금 분야)', '국민이 기대하는 전기값은 해마다 내려갑니다. 가스만 쓰면 도매가를 그대로 내지만, 원전·석탄·재생 비중이 클수록 소비자 요금이 도매가보다 싸집니다. 설비를 너무 많이 지어도 남는 설비의 유지비가 요금에 얹힙니다. 연료비를 줄이는 테크와 요금 지원도 도움이 됩니다.'],
   clean:     ['탄소 배출', '화력은 테크를 올려도 탄소가 국민의 기대 수준을 넘기 쉽습니다. 탄소 감축 테크를 연구하면서 태양광·풍력·원자력 같은 무탄소 전원을 섞으세요.'],
-  reliab:    ['정전의 기억', '정전은 한 번 나면 여러 달 민심에 남습니다. 최대 수요보다 10~20% 넉넉한 조절 전원을 미리 지어 두세요.'],
+  reliab:    ['정전', '정전이 난 달에는 전력 공급 점수가 크게 깎이고, 정전 없는 달마다 ' + ECON.moodPowerRecover + '점씩 돌아옵니다. 최대 수요보다 10~20% 넉넉한 조절 전원을 미리 지어 두세요.'],
   economy:   ['경기 침체', '전기가 넉넉해야 사람과 공장이 들어옵니다. 조절 전원 여유를 20% 넘게 두면 인구가 더 빨리 늡니다.'],
   accident:  ['원전 중대 사고', '사고의 상처는 임기 끝까지 남습니다.'],
   gas:       ['가스 의존', '가스 발전에 너무 기대면 겨울에는 난방용 가스가 모자라고, 가스값이 뛸 때는 부담이 그대로 돌아옵니다. 석탄·원자력·태양광·풍력을 섞어 가스 발전 비중을 절반 가까이로 낮추세요.'],
@@ -1337,7 +1337,14 @@ function drawChart(canvas, opts) {
   if (cssW > 0) {
     const aspect = opts.aspect || (parseInt(canvas.getAttribute('height'), 10) / parseInt(canvas.getAttribute('width'), 10)) || 0.4;
     const dpr = window.devicePixelRatio || 1;
-    const cssH = Math.round(cssW * aspect);
+    // 높이는 "스크롤 막대가 없을 때의 폭"으로 정함. 막대가 생겨 폭이 줄 때 높이까지 따라 줄면
+    //  내용이 다시 다 들어가 막대가 사라지고 → 폭이 늘어 그래프가 커지고 → 다시 넘쳐 막대가 생기는 되풀이로 칸이 들썩임
+    let gutter = 0;
+    for (let el = canvas.parentElement; el && el !== document.body; el = el.parentElement) {
+      const oy = getComputedStyle(el).overflowY;
+      if (oy === 'auto' || oy === 'scroll') { gutter = Math.max(0, el.offsetWidth - el.clientWidth - el.clientLeft * 2); break; }
+    }
+    const cssH = Math.round((cssW + gutter) * aspect);
     if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) { canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr); }
     canvas.style.height = cssH + 'px';
     canvas.dataset.drawnW = cssW;   // 폭이 바뀌었는지 주기 확인용

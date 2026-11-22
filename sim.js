@@ -398,7 +398,7 @@ function recentHappyAvg(state, months) {
 //  (민심은 매달 예상 민심 쪽으로 빠르게 끌려가므로, 여론으로 남기지 않으면 한두 달 만에 효과가 사라짐)
 function moodBump(state, v) {
   if (!v) return;
-  if (!state.mood) state.mood = { outage: 0 };
+  if (!state.mood) state.mood = { powerLoss: 0 };
   state.happiness = clamp(state.happiness + v, 0, 100);
   state.mood.buzz = clamp((state.mood.buzz || 0) + v, -ECON.moodBuzzCap, ECON.moodBuzzCap);
 }
@@ -431,7 +431,7 @@ function housingScore(density) {
 // 이번 달 민심: 다섯 분야 × 20점 성적표
 //  pillars: 분야별 점수(0~20)와 그 내역(parts). 예상 민심 = 다섯 분야의 합 + 여론 (− 원전 사고의 상처)
 //  민심은 예상 민심 쪽으로 매달 차이의 moodPull만큼 움직임
-//  한 달에 한 번만 호출됨 (정전 기억 state.mood.outage와 여론 state.mood.buzz를 갱신함)
+//  한 달에 한 번만 호출됨 (정전으로 깎인 점수 state.mood.powerLoss와 여론 state.mood.buzz를 갱신함)
 // ------------------------------------------------------------
 function startCityCount(state) { return (state && state.startCities) || 3; }   // 시작할 때 있던 도시 수 (예전 저장본은 3곳)
 const MOOD_PILLARS = [
@@ -445,7 +445,7 @@ function happinessChange(state, report) {
   const P = ECON.moodPillarMax;
   const r1 = (v) => Math.round(v * 10) / 10;
   const pm = policyMods(state);
-  if (!state.mood) state.mood = { outage: 0 };
+  if (!state.mood) state.mood = { powerLoss: 0 };
   const pillars = [];
   const part = (key, label, value) => ({ key, label, value: r1(value) });
   const pillar = (key, parts) => {
@@ -455,13 +455,26 @@ function happinessChange(state, report) {
   };
   let priceInfo = null;   // 이번 달 체감 요금과 기대 요금 (기록·공약 판정용)
 
-  // ① 전력 공급: 정전이 없으면 만점. 정전·주파수 사고는 "기억"으로 쌓였다가 매달 10%씩 옅어짐
+  // ① 전력 공급: 정전이 없으면 만점.
+  //    정전이 난 달: 전기가 끊긴 1시간대마다 −moodPowerPerHour (주파수 사고가 낀 시간대는 1.5배). 0점 밑으로는 쌓이지 않음
+  //    정전이 없는 달: 깎였던 점수가 moodPowerRecover씩 돌아옴 → 아무리 크게 났어도 넉 달 동안 정전이 없으면 만점
   {
-    const mem = (state.mood.outage || 0) * ECON.moodOutageDecay + report.blackoutHours + 0.5 * report.freqHours;
-    state.mood.outage = mem;
-    const v = clamp(P - mem * ECON.moodPowerPerHour, 0, P);
-    const p = part('reliab', mem < 0.05 ? '정전 없는 안정적인 전력 공급' : '최근 정전의 기억 (정전 ' + fmt(mem, 1) + '시간대만큼 남아 있음 · 매달 10%씩 옅어짐)', v);
-    p.keep = true; pillar('power', [p]);
+    const perH = ECON.moodPowerPerHour, rec = ECON.moodPowerRecover;
+    const prev = clamp(state.mood.powerLoss !== undefined ? state.mood.powerLoss : (state.mood.outage || 0) * perH, 0, P);   // 예전 저장분(정전 기억)은 점수로 바꿔 이어감
+    const hitH = report.blackoutHours + 0.5 * report.freqHours;
+    const carried = r1(hitH > 0 ? prev : Math.max(0, prev - rec));   // 지난 정전의 여파: 정전이 없는 달에만 회복
+    const nowPts = r1(Math.min(P - carried, hitH * perH));           // 이번 달 정전으로 새로 깎인 점수
+    state.mood.powerLoss = carried + nowPts;
+    if (carried + nowPts < 0.05) { const p = part('reliab', '정전 없는 안정적인 전력 공급', P); p.keep = true; pillar('power', [p]); }
+    else {
+      const parts = [part('pfull', '정전이 없을 때의 점수', P)];
+      if (hitH > 0) {
+        const p = part('pnow', '이번 달 정전 ' + report.blackoutHours + '시간대 (1시간대마다 −' + perH + '점' + (report.freqHours ? ' · 주파수 사고 ' + report.freqHours + '시간대는 1.5배' : '') + (nowPts < hitH * perH - 0.05 ? ' · 0점 밑으로는 안 내려감' : '') + ')', -nowPts);
+        p.keep = true; parts.push(p);
+      }
+      if (carried > 0) parts.push(part('pafter', '지난 정전의 여파 (정전이 없는 달마다 ' + rec + '점씩 회복)', -carried));
+      pillar('power', parts);
+    }
   }
 
   // ② 전기 요금: 국민이 실제로 내는 요금(체감 요금)을 기대 요금(해마다 내려감)과 비교. 같으면 절반, 1원 쌀 때마다 +moodPriceSlope
