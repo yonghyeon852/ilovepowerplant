@@ -123,7 +123,9 @@ function mobilePlaceConfirm() {
   if (state.money < info.cost) { showMessage('✕ 자금이 부족합니다 (' + fmt(info.cost) + '억 필요)'); return; }
   drag = null;
   document.body.classList.remove('mplacing');
-  tryBuild(d.type, d.col, d.row);   // 지은 설비가 선택되고 "설비" 칸이 열림
+  tryBuild(d.type, d.col, d.row);   // 지은 설비가 선택되고 착공 알림이 뜸
+  // 이어서 다른 설비도 고를 수 있게 건설 칸으로 돌아감 (안내 중에는 안내가 설비 칸을 엶)
+  if (!(state.tutorial && !state.tutorial.done)) mobileOpen('build');
 }
 
 // ---------- 지도: 두 손가락으로 확대·축소와 이동 ----------
@@ -167,12 +169,24 @@ function mTouchEnd(e) {
 document.addEventListener('pointerup', mTouchEnd, true);
 document.addEventListener('pointercancel', mTouchEnd, true);
 
+// 스크롤되는 칸(아래 칸 · 창 · 안내 글) 밖에서 손가락을 밀 때 화면 전체가 딸려 움직이는 것(튕김)과 두 손가락 페이지 확대를 막음
+document.addEventListener('touchmove', (e) => {
+  if (!isMobile()) return;
+  if (e.touches.length > 1) { e.preventDefault(); return; }
+  for (let el = e.target; el && el !== document.body && el.nodeType === 1; el = el.parentElement) {
+    const st = getComputedStyle(el);
+    if ((/(auto|scroll)/.test(st.overflowY) && el.scrollHeight > el.clientHeight + 1) || (/(auto|scroll)/.test(st.overflowX) && el.scrollWidth > el.clientWidth + 1)) return;   // 이 칸은 스크롤됨: 그대로 둠
+  }
+  e.preventDefault();
+}, { passive: false });
+document.addEventListener('gesturestart', (e) => { if (isMobile()) e.preventDefault(); });
+
 // ---------- 안내(튜토리얼): 모바일 문구 · 대상이 있는 칸 열기 · 창 자리 ----------
 const M_TUT_TEXT = {
   map: '<b>회색 칸</b>이 도시(전기를 사는 곳), <b>초록</b>은 땅, <b>파랑</b>은 강과 바다, <b>진한 초록 ▲</b>은 산이에요. 산에는 태양광·풍력만 지을 수 있습니다. 시작 설비로 도시 옆의 <b>복합발전 1기</b>와 <b>태양광 1개 · 풍력 1개</b>가 이미 돌아가고 있어요.<br><br>' +
     '처음에는 <b>지도 전체</b>가 보입니다. <b>두 손가락을 벌리면 확대</b>, 오므리면 축소, <b>한 손가락으로 끌면 이동</b>이에요. 지도 오른쪽의 <b>＋ / － / ⤢</b> 버튼으로도 됩니다. 설비 위 <b>빗금</b>은 건설 중, <b>노란 점</b>은 노후, <b>붉은 글씨</b>는 수명이 끝나 멈춘 설비예요.',
   build: '아래 탭 줄의 <b>건설</b>에 설비 카드가 있습니다. <b>복합발전</b> 카드를 <b>눌러 보세요</b>. 지도가 넓어지면서 놓을 자리가 초록 테두리로 나타납니다.<br><br>' +
-    '<b>지도를 누르면</b> 그곳으로 자리가 옮겨 가고(누른 채 움직여도 됩니다), 두 손가락으로 지도를 옮기거나 확대할 수 있어요. 화면 맨 아래 줄에 비용과 공사 기간이 뜹니다. 마음에 들면 그 옆의 <b>여기에 짓기</b>를 누르세요.<br><br>' +
+    '<b>지도를 짧게 누르면</b> 그곳으로 자리가 옮겨 가고, <b>누른 채 끌면</b> 지도가 움직입니다(두 손가락을 벌리면 확대). 화면 맨 아래 줄에 비용과 공사 기간이 뜹니다. 마음에 들면 그 옆의 <b>여기에 짓기</b>를 누르세요.<br><br>' +
     '기억하실 것: <b>도시에서 멀수록 송전 손실</b>이 커지고, 원전·풍력·석탄은 <b>도시 가까이 두면 주민 반발</b>이 있고, 모든 설비는 <b>공사 기간</b>이 있어요. 수요는 해마다 늘어나니 늘 <b>부족해지기 전에</b> 다음 설비를 지어야 합니다.',
   select: '방금 지은 설비가 선택되어, 아래 <b>설비</b> 탭에 용량, 송전 손실, 남은 공사 기간, 수명이 나와 있습니다. 지도에서 다른 설비를 <b>누르면</b> 그 설비의 정보로 바뀌어요.<br><br>' +
     '여기서 <b>철거</b>를 할 수 있습니다. 테크트리 연구 효과는 <b>이미 지은 설비에도 바로</b> 붙습니다. 수명이 끝난 설비는 자리만 차지하고 유지비가 나가니 꼭 철거하세요.',

@@ -294,9 +294,14 @@ function baseGrowthNow(state) {
   const happyMult = clamp(1 + (state.happiness - ECON.happyGrowthPivot) * ECON.happyGrowthSlope, 0.5, 1.3);
   return ECON.popGrowth * earlyGrowthMult(state) * policyMods(state).popGrowth * happyMult;
 }
+// 도시가 빽빽해질수록 새로 들어오는 사람이 줄어듦: 전국 평균 밀도가 housingComfort 이하면 그대로, 과밀 기준(densityLimit)이면 housingGrowthMin배
+//  → 새 도시를 세워야 인구(전력 수요)가 계속 늘어남. 반대로 수요가 너무 빨리 늘면 도시를 늦게 세워 속도를 늦출 수 있음
+function housingGrowthMult(state) {
+  const d = housingDensity(state);
+  return clamp(1 - (d - ECON.housingComfort) / (ECON.densityLimit - ECON.housingComfort) * (1 - ECON.housingGrowthMin), ECON.housingGrowthMin, 1);
+}
 function monthlyGrowth(state) {
-  const landFactor = Math.max(0.4, 1 - ECON.landSaturationPerCity * Math.max(0, state.cities.length - ECON.landSaturationFrom));
-  return Math.min(growthCapNow(state) * landFactor, baseGrowthNow(state) + inducedGrowth(state));
+  return Math.min(growthCapNow(state), baseGrowthNow(state) + inducedGrowth(state)) * housingGrowthMult(state);
 }
 function refCostFactor(state) {
   return Math.pow(1 - ECON.refCostDecline, yearsElapsed(state));
@@ -310,17 +315,14 @@ function kindStatsBase(state) {
   };
 }
 
-// 국민이 기대하는 탄소 수준 (t/MWh): 처음 cleanExpectStart에서 해마다 cleanExpectDrop씩 내려가 cleanExpectMin에서 멈춤. 민심의 "공기·탄소" 요인이 보는 기준
-function cleanExpect(state) {
-  return Math.max(ECON.cleanExpectMin, ECON.cleanExpectStart - ECON.cleanExpectDrop * Math.max(0, yearsElapsed(state)));
+// 탄소 기준 (t/MWh): 발전량당 탄소가 이 값 이상이면 민심의 "환경" 분야가 0점, 0이면 만점. 처음 carbonRefStart에서 intensityEndYear년 차 carbonRefEnd까지 해마다 내려감
+//  (예전에는 "국민의 기대"와 6년 차부터 생기는 "법정 배출 기준"이 따로 있었음 → 하나로 합침)
+function carbonRef(state) {
+  const t = clamp(yearsElapsed(state) / ECON.intensityEndYear, 0, 1);
+  return ECON.carbonRefStart + (ECON.carbonRefEnd - ECON.carbonRefStart) * t;
 }
-// 이번 달의 탄소 배출 기준 (t/MWh). 시작 연차 전에는 없음(null)
-function intensityTarget(state) {
-  const y = yearsElapsed(state);
-  if (y < ECON.intensityStartYear) return null;
-  const t = clamp((y - ECON.intensityStartYear) / (ECON.intensityEndYear - ECON.intensityStartYear), 0, 1);
-  return ECON.intensityStart + (ECON.intensityEnd - ECON.intensityStart) * t;
-}
+function cleanExpect(state) { return carbonRef(state); }       // (예전 이름: 부르는 곳이 남아 있어 둠)
+function intensityTarget(state) { return carbonRef(state); }   // (예전 이름)
 
 // 지난달 실제 배출 원단위 (t/MWh)
 function reportIntensity(report) {
@@ -392,209 +394,216 @@ function recentHappyAvg(state, months) {
   return h.length ? h.reduce((s, x) => s + (x.happyEnd !== undefined ? x.happyEnd : x.happy), 0) / h.length : state.happiness;
 }
 
-// 이번 달 민심 변화.
-//  factors: 예상 민심을 만드는 요인들(나라의 지금 상태). 민심은 목표 쪽으로 매달 moodPull만큼 움직임
-//  items:   그달의 사고(정전·주파수 사고·날씨 사건)가 주는 즉시 충격
-//  한 달에 한 번만 호출됨 (정전 기억 state.mood.outage를 갱신함)
+// 사건·목표가 민심을 한 번에 올리거나 내릴 때 쓰는 함수: 지금 민심을 바로 움직이고, 같은 크기의 "여론"으로 남아 매달 조금씩 옅어짐
+//  (민심은 매달 예상 민심 쪽으로 빠르게 끌려가므로, 여론으로 남기지 않으면 한두 달 만에 효과가 사라짐)
+function moodBump(state, v) {
+  if (!v) return;
+  if (!state.mood) state.mood = { outage: 0 };
+  state.happiness = clamp(state.happiness + v, 0, 100);
+  state.mood.buzz = clamp((state.mood.buzz || 0) + v, -ECON.moodBuzzCap, ECON.moodBuzzCap);
+}
+// 설비 여유: 언제든 낼 수 있는 조절 설비(복합발전·석탄·원전)가 "한 해 중 수요가 가장 큰 달"의 최대 수요의 몇 배인가
+//  (그달의 수요로 재면 봄가을마다 남아도는 것처럼 보이므로, 설비를 맞춰 지어야 하는 1월 기준으로 잼. 날씨·사건·정지는 빼고 평소 용량으로)
+function reserveYear(state) {
+  let firm = 0;
+  for (const b of state.buildings) {
+    if (b.status !== 'online') continue;
+    const p = PLANTS[b.type];
+    if (!p.dispatchable || p.isStorage || p.isLink) continue;
+    firm += plantStats(state, b.type).capacity * (1 - plantLoss(state, b)) * (plantAgeStatus(b) === 'aging' ? ECON.agingFactor : 1);
+  }
+  const peak = state.cities.reduce((a, c) => a + c.pop, 0) * perCapitaNow(state) * WORST_PEAK_MULT;
+  return peak > 0 ? firm / peak : 1;
+}
+// 설비 과잉 부담 (원/kWh): 설비 여유가 reserveFree배를 넘으면, 남아도는 설비의 유지비가 요금에 얹힘
+function reserveSurcharge(state) { return Math.max(0, reserveYear(state) - ECON.reserveFree) * ECON.reserveWonPer; }
+// 전국 평균 인구 밀도 (만 명/칸). 산 칸은 반 칸으로 침
+function housingDensity(state, extraTiles, extraPop) {
+  const tiles = state.cities.reduce((a, c) => a + cityEffTiles(c), 0) + (extraTiles || 0);
+  return tiles > 0 ? (state.cities.reduce((a, c) => a + c.pop, 0) + (extraPop || 0)) / tiles : 0;
+}
+// 주거 여유 점수 (0~moodHousingMax): 평균 밀도가 housingComfort 이하면 만점, 과밀 기준(densityLimit)이면 0점
+function housingScore(density) {
+  return ECON.moodHousingMax * clamp((ECON.densityLimit - density) / (ECON.densityLimit - ECON.housingComfort), 0, 1);
+}
+
+// ------------------------------------------------------------
+// 이번 달 민심: 다섯 분야 × 20점 성적표
+//  pillars: 분야별 점수(0~20)와 그 내역(parts). 예상 민심 = 다섯 분야의 합 + 여론 (− 원전 사고의 상처)
+//  민심은 예상 민심 쪽으로 매달 차이의 moodPull만큼 움직임
+//  한 달에 한 번만 호출됨 (정전 기억 state.mood.outage와 여론 state.mood.buzz를 갱신함)
+// ------------------------------------------------------------
 function startCityCount(state) { return (state && state.startCities) || 3; }   // 시작할 때 있던 도시 수 (예전 저장본은 3곳)
+const MOOD_PILLARS = [
+  { key: 'power',  name: '전력 공급',   icon: '⚡' },
+  { key: 'price',  name: '전기 요금',   icon: '💡' },
+  { key: 'env',    name: '환경',        icon: '🌿' },
+  { key: 'city',   name: '도시·생활',   icon: '🏙' },
+  { key: 'future', name: '미래·신뢰',   icon: '🔬' },
+];
 function happinessChange(state, report) {
-  const factors = [];
-  const items = [];
-  const add = (key, label, value) => { const v = Math.round(value * 10) / 10; if (Math.abs(v) >= 0.1) factors.push({ key, label, value: v }); };
+  const P = ECON.moodPillarMax;
+  const r1 = (v) => Math.round(v * 10) / 10;
   const pm = policyMods(state);
   if (!state.mood) state.mood = { outage: 0 };
+  const pillars = [];
+  const part = (key, label, value) => ({ key, label, value: r1(value) });
+  const pillar = (key, parts) => {
+    const def = MOOD_PILLARS.find((x) => x.key === key);
+    const list = parts.filter((p) => p && (Math.abs(p.value) >= 0.05 || p.keep));
+    pillars.push({ key, name: def.name, icon: def.icon, max: P, score: r1(clamp(list.reduce((s, p) => s + p.value, 0), 0, P)), parts: list });
+  };
   let priceInfo = null;   // 이번 달 체감 요금과 기대 요금 (기록·공약 판정용)
 
-  // 1) 전력 안정: 최근 정전의 기억이 없으면 +, 쌓이면 크게 −
-  const mem = (state.mood.outage || 0) * ECON.moodOutageDecay + report.blackoutHours + 0.5 * report.freqHours;
-  state.mood.outage = mem;
-  add('reliab', mem < 0.7 ? '안정적인 전력 공급' : '최근 정전의 기억', clamp(ECON.moodReliabMax - mem * ECON.moodOutagePerHour, ECON.moodReliabMin, ECON.moodReliabMax));
-
-  // 2) 전기 요금: 기대 요금(해마다 내려감)보다 싸면 +, 비싸면 −. 하한은 전력시장 정책에 따라 다름
-  //    남는 전기(줄일 수 없는 원전·석탄 출력이 배터리·수출로도 못 받아낼 만큼 남은 것)는 정전이 아니라 요금 부담:
-  //    · 전기가 남는 시간은 싸게 쳐 주지 않음 (그 시간의 값은 기대 요금 이상으로 침 → 남아도는 전기의 헐값 덕을 못 봄)
-  //    · 남은 전기 1kWh마다 overPriceWon원이 요금에 얹힘 (남은 양이 그달 수요의 10%면 kWh당 +30원)
-  const normal = report.hours.filter((h) => h.unmet <= 0);
-  const overShare = report.energy && report.energy.demand > 0 ? (report.energy.over || 0) / report.energy.demand : 0;
-  if (normal.length > 0) {
-    const avgSmp = normal.reduce((s, h) => s + h.smp, 0) / normal.length;   // 실제 도매가 평균 (표시용)
-    const ref = moodPriceRef(state);
-    const smpPay = normal.reduce((s, h) => s + (h.over > 0 ? Math.max(h.smp, ref) : h.smp), 0) / normal.length;   // 요금 계산용: 전기가 남는 시간은 기대 요금 이상으로 침
-    const tfp = tariffNow(state);
-    // 국민이 실제로 내는 요금(체감 요금)으로 계산. 지원으로는 상한(+moodPriceMax)을 못 넘고, 할증은 하한 아래로도 내려감.
-    //  전기값이 기대보다 훨씬 싸면 그 여유만큼은 할증해도 불만이 생기지 않음 (싸게 만들수록 요금 조정의 여유가 큼)
-    // 소비자 요금 = 발전소에 정산해 준 평균 단가. 가스가 정하는 도매가(SMP)보다, 기저(원전·석탄)는 정산조정계수만큼, 재생은 통합 비용 공제만큼 싸게 정산되므로
-    //  설비 구성에 따라 같은 도매가에서도 소비자 요금이 달라짐 (가스 위주 = 도매가 그대로, 원전·석탄·재생 비중이 클수록 쌈)
-    const pay = smpPay * ((report.payRatio !== undefined && isFinite(report.payRatio) && report.payRatio > 0) ? report.payRatio : 1) + overShare * ECON.overPriceWon;
-    const base = Math.max(-ECON.moodPriceFloorPerCap * pm.smpPenaltyCap, (ref - pay) * ECON.moodPriceSlope);
-    const v = Math.min(ECON.moodPriceMax, base - tfp.rate * pay * ECON.moodPriceSlope);
-    const felt = pay * (1 + tfp.rate);   // 국민이 실제로 내는 요금
-    priceInfo = { felt, ref, pay, smp: avgSmp };
-    add('price', (v >= 0 ? '저렴한 전기 요금' : '전기 요금 부담') + ' (소비자 요금 ' + fmt(felt) + '원' + (tfp.rate ? ' · ' + (tfp.rate < 0 ? '지원' : '할증') + ' 반영' : '') + ' · 도매가 ' + fmt(avgSmp) + '원 · 기대 ' + fmt(ref) + '원' + (overShare >= 0.005 ? ' · 남는 전기 처리비 +' + fmt(overShare * ECON.overPriceWon) + '원' : '') + ')', v);  }
-
-  // 3) 공기·탄소: 발전량당 탄소(원단위)를 "국민이 기대하는 수준"과 비교. 기대는 처음부터 복합발전(0.37)보다 낮고 해마다 내려감
-  //    → 화력만으로는 테크를 올려도 초중반 내내 조금씩 깎이고(화력의 한계), 무탄소 전원을 섞어야 플러스가 됨
-  //    법정 배출 기준(intensityStartYear년 차부터)을 넘으면 그보다 크게 깎임 (도입 초기에는 하한이 얕고 3년마다 깊어짐)
-  const inten = reportIntensity(report);
-  const tgt = intensityTarget(state);
+  // ① 전력 공급: 정전이 없으면 만점. 정전·주파수 사고는 "기억"으로 쌓였다가 매달 10%씩 옅어짐
   {
-    const exp = cleanExpect(state);
-    let cv = clamp((exp - inten) / exp * ECON.moodCleanMax, ECON.moodCleanExpMin, ECON.moodCleanMax);
-    let cl = cv >= 0 ? '깨끗한 공기 (' + inten.toFixed(2) + ' · 기대 ' + exp.toFixed(2) + ' t/MWh 이하)' : '탄소 배출 부담 (' + inten.toFixed(2) + ' > 기대 ' + exp.toFixed(2) + ' t/MWh)';
-    if (tgt !== null && inten > tgt) {
-      const capNow = Math.min(3, 1 + Math.floor((yearsElapsed(state) - ECON.intensityStartYear) / 3));
-      const over = -Math.min(capNow * ECON.moodCleanOverPerStep, Math.max(1, (inten - tgt) / ECON.intensityStep * ECON.moodCleanOverPerStep));
-      if (over < cv) { cv = over; cl = '배출 기준 초과 (' + inten.toFixed(2) + ' > ' + tgt.toFixed(2) + ' t/MWh)'; }
-    }
-    add('clean', cl, cv);
+    const mem = (state.mood.outage || 0) * ECON.moodOutageDecay + report.blackoutHours + 0.5 * report.freqHours;
+    state.mood.outage = mem;
+    const v = clamp(P - mem * ECON.moodPowerPerHour, 0, P);
+    const p = part('reliab', mem < 0.05 ? '정전 없는 안정적인 전력 공급' : '최근 정전의 기억 (정전 ' + fmt(mem, 1) + '시간대만큼 남아 있음 · 매달 10%씩 옅어짐)', v);
+    p.keep = true; pillar('power', [p]);
   }
 
-  // 3-1) 가스 의존: 가스 발전(복합발전) 비중이 높으면, 가스가 귀한 때 민심이 깎임
-  //    · 겨울(12~2월): 난방에 쓸 가스를 발전이 끌어다 써서 난방용 가스가 모자람 (최대 −moodGasWinter)
-  //    · 가스값 급등(평소의 moodGasSpikeFrom배 이상): 넘는 0.1배마다 −moodGasSpikePer/10 (최대 −moodGasSpikeMax). 요금 요인과 별개로 더 깎임
-  //    가스 발전 비중이 moodGasFree 이하면 없고 moodGasFull 이상이면 온전히 받음. 처음 moodGasGraceYears년은 유예 (시작 설비가 거의 복합발전뿐이라)
+  // ② 전기 요금: 국민이 실제로 내는 요금(체감 요금)을 기대 요금(해마다 내려감)과 비교. 같으면 절반, 1원 쌀 때마다 +moodPriceSlope
+  //    체감 요금 = 발전소에 정산해 준 평균 단가 (가스만 쓰면 도매가, 원전·석탄·재생 비중이 클수록 쌈)
+  //             + 남는 전기 처리비 (줄일 수 없는 원전·석탄 출력이 배터리·수출로도 못 받아낼 만큼 남은 것: 그달 수요의 10%면 +30원)
+  //             + 설비 과잉 부담 (조절 설비가 한 해 최대 수요의 reserveFree배를 넘는 만큼: 넘는 10%p마다 +10원)
+  //             ± 전기요금 조정(지원·할증)
   {
-    const g = report.energy.gen, tot = g.nuclear + g.coal + g.ccgt + g.gt + g.solar + g.wind;
-    const share = tot > 0 ? (g.ccgt + g.gt) / tot : 0;
-    // 첫 moodGasGraceYears년은 없고, 그 뒤 moodGasRampYears년에 걸쳐 서서히 커짐 (처음에는 누구나 복합발전으로 시작하므로)
-    const scale = clamp((share - ECON.moodGasFree) / (ECON.moodGasFull - ECON.moodGasFree), 0, 1) * clamp((yearsElapsed(state) - ECON.moodGasGraceYears) / ECON.moodGasRampYears, 0, 1);
-    if (scale > 0) {
-      const winter = seasonOf(report.month || state.month) === 'winter';
-      const gm = report.gasMult || state.gasPrice || 1;
-      const spike = Math.max(0, gm - ECON.moodGasSpikeFrom);
-      const gv = -Math.min(ECON.moodGasCap, scale * ((winter ? ECON.moodGasWinter : 0) + Math.min(ECON.moodGasSpikeMax, spike * ECON.moodGasSpikePer)));
-      if (gv < 0) add('gas', '가스 의존 (가스 발전 ' + fmt(share * 100) + '%' + (winter ? ' · 겨울 난방용 가스가 모자람' : '') + (spike > 0 ? ' · 가스값 ' + fmt(gm, 1) + '배' : '') + ')', gv);
-    }
+    const normal = report.hours.filter((h) => h.unmet <= 0);
+    const overShare = report.energy && report.energy.demand > 0 ? (report.energy.over || 0) / report.energy.demand : 0;
+    if (normal.length > 0) {
+      const avgSmp = normal.reduce((s, h) => s + h.smp, 0) / normal.length;   // 실제 도매가 평균 (표시용)
+      const ref = moodPriceRef(state);
+      const smpPay = normal.reduce((s, h) => s + (h.over > 0 ? Math.max(h.smp, ref) : h.smp), 0) / normal.length;   // 전기가 남는 시간은 헐값으로 쳐 주지 않음
+      const tfp = tariffNow(state);
+      const overWon = overShare * ECON.overPriceWon, rsvWon = reserveSurcharge(state);
+      const pay = smpPay * ((report.payRatio !== undefined && isFinite(report.payRatio) && report.payRatio > 0) ? report.payRatio : 1) + overWon + rsvWon;
+      const felt = pay * (1 + tfp.rate);   // 국민이 실제로 내는 요금
+      const v = clamp(P / 2 + (ref - felt) * ECON.moodPriceSlope, 0, P);
+      priceInfo = { felt, ref, pay, smp: avgSmp, over: overWon, reserve: rsvWon };
+      const p = part('price', (felt <= ref ? '저렴한 전기 요금' : '전기 요금 부담') + ' (소비자 요금 ' + fmt(felt) + '원 · 기대 ' + fmt(ref) + '원' + (tfp.rate ? ' · ' + (tfp.rate < 0 ? '지원' : '할증') + ' 반영' : '') +
+        (rsvWon >= 0.5 ? ' · 설비 과잉 부담 +' + fmt(rsvWon) + '원' : '') + (overWon >= 0.5 ? ' · 남는 전기 처리비 +' + fmt(overWon) + '원' : '') + ')', v);
+      p.keep = true; pillar('price', [p]);
+    } else { const p = part('price', '하루 종일 정전이라 요금을 따질 수 없음', 0); p.keep = true; pillar('price', [p]); }
   }
 
-  // 4) 경제·일자리: 최근 1년 인구 증가율을 그해의 기본 증가율과 비교
-  const hist = state.history || [];
-  if (hist.length >= 12 && hist[hist.length - 12].pop) {
-    const popNow = state.cities.reduce((s, c) => s + c.pop, 0);
-    const g = popNow / hist[hist.length - 12].pop - 1;
-    const baseAnnual = ECON.baseGrowthFloor + ECON.baseGrowthBoost * Math.exp(-yearsElapsed(state) / ECON.baseGrowthTau) + ECON.startGrowthBoost * Math.exp(-yearsElapsed(state) / ECON.startGrowthTau);   // 개발 초기 고성장분도 기준에 넣음 (저절로 크는 만큼은 호황으로 치지 않음)
-    const v = clamp((g - baseAnnual) / Math.max(0.03, baseAnnual) * ECON.moodEconSlope, ECON.moodEconMin, ECON.moodEconMax);
-    add('economy', (v >= 0 ? '경기 호황 · 일자리 증가' : '경기 침체 · 일자리 부족') + ' (인구 연 ' + (g >= 0 ? '+' : '') + fmt(g * 100, 1) + '%)', v);
+  // ③ 환경: 발전량당 탄소(원단위)가 0이면 만점, 탄소 기준(해마다 내려감) 이상이면 0점
+  {
+    const inten = reportIntensity(report), ref = carbonRef(state);
+    const v = clamp(P * (1 - inten / ref), 0, P);
+    const p = part('clean', (inten < ref ? '탄소 배출 ' : '탄소 기준 초과 ') + inten.toFixed(2) + ' t/MWh (기준 ' + ref.toFixed(2) + ' · 0에 가까울수록 만점)', v);
+    p.keep = true; pillar('env', [p]);
   }
 
-  // 4-1) 전력 수출: 남는 전기를 버리지 않고 이웃 나라에 팔면 외화가 들어와 민심이 오름. 수출량이 그달 수요의 1%일 때마다 +moodExportPer (최대 +moodExportMax)
-  //    수출되는 것은 남는 전기뿐이라 화력만으로는 얻을 수 없음 → 원전·재생에너지를 넉넉히 짓고 연계선을 뚫어야 하는, 고점으로 가는 길
+  // ④ 도시·생활 = 일자리 + 전력 수출 + 주거 여유 − 주민 불만
   {
+    const parts = [];
+    // 일자리: 최근 1년 인구 증가율을 그해의 기본 증가율과 비교 (같으면 절반, 2배면 만점, 0이면 0점). 첫 해는 절반
+    const hist = state.history || [];
+    const mid = ECON.moodJobsMax / 2;
+    if (hist.length >= 12 && hist[hist.length - 12].pop) {
+      const popNow = state.cities.reduce((s, c) => s + c.pop, 0);
+      const g = popNow / hist[hist.length - 12].pop - 1;
+      const baseAnnual = ECON.baseGrowthFloor + ECON.baseGrowthBoost * Math.exp(-yearsElapsed(state) / ECON.baseGrowthTau) + ECON.startGrowthBoost * Math.exp(-yearsElapsed(state) / ECON.startGrowthTau);   // 개발 초기 고성장분도 기준에 넣음
+      const v = clamp(mid + (g - baseAnnual) / Math.max(0.03, baseAnnual) * mid, 0, ECON.moodJobsMax);
+      const p = part('economy', (v >= mid ? '일자리 증가' : '일자리 부족') + ' (인구 연 ' + (g >= 0 ? '+' : '') + fmt(g * 100, 1) + '% · 기준 ' + fmt(baseAnnual * 100, 1) + '%)', v); p.keep = true; parts.push(p);
+    } else { const p = part('economy', '일자리 (1년 기록이 쌓이면 인구 증가율로 평가)', mid); p.keep = true; parts.push(p); }
+    // 전력 수출: 남는 전기를 이웃 나라에 팔면 외화가 들어옴. 수출량이 그달 수요의 1%일 때마다 +moodExportPer
     const es = report.energy && report.energy.demand > 0 ? (report.energy.exp || 0) / report.energy.demand : 0;
-    if (es > 0.001) add('export', '전력 수출 (수요의 ' + fmt(es * 100, 1) + '%를 이웃 나라에 판매)', Math.min(ECON.moodExportMax, es * 100 * ECON.moodExportPer));
-  }
-
-  // 5) 도시 과밀 (도시별 상한 + 전체 합계 상한)
-  let crowdTotal = 0; const crowded = [];
-  for (const c of state.cities) {
-    const density = cityDensity(c);
-    if (density > ECON.densityLimit) {
-      let steps = Math.min(Math.max(1, ECON.densityCap + pm.densityCapDelta), Math.ceil((density - ECON.densityLimit) / ECON.densityStep));
-      steps = Math.min(steps, ECON.densityTotalCap - crowdTotal);
-      if (steps <= 0) continue;
-      crowdTotal += steps; crowded.push(c.name);
+    if (es > 0.001) parts.push(part('export', '전력 수출 (수요의 ' + fmt(es * 100, 1) + '%를 이웃 나라에 판매)', Math.min(ECON.moodExportMax, es * 100 * ECON.moodExportPer)));
+    // 주거 여유: 전국 평균 인구 밀도. 인구가 늘수록 빽빽해지므로 새 도시를 세워야 유지됨
+    {
+      const d = housingDensity(state), v = housingScore(d);
+      const extra = Math.max(0, state.cities.length - startCityCount(state));
+      const p = part('housing', (v >= ECON.moodHousingMax - 0.05 ? '여유로운 도시' : v > 0 ? '빽빽해지는 도시' : '도시 과밀') + ' (평균 ' + fmt(d, 2) + '만 명/칸 · ' + fmt(ECON.housingComfort, 1) + ' 이하면 만점 · 도시 ' + state.cities.length + '곳' + (extra ? ', 새 도시 ' + extra + '곳' : '') + ')', v);
+      p.keep = true; parts.push(p);
     }
-  }
-  if (crowdTotal > 0) add('crowd', '도시 과밀 (' + crowded.join(', ') + ')', -crowdTotal * ECON.moodCrowdPerStep);
-
-  // 5-2) 새 도시: 시작 도시 말고 새로 세운 도시마다 민심 + (주거 여유·건설 경기). 과밀을 푸는 것 말고도 세울 이유가 있게
-  {
-    const extra = Math.max(0, state.cities.length - startCityCount(state));
-    if (extra > 0) add('cities', '새 도시 ' + extra + '곳 (주거 여유 · 건설 경기)', Math.min(ECON.moodNewCityMax, extra * ECON.moodNewCityPer));
-  }
-
-  // 6) 도시 안·근처의 기피 시설
-  const byKind = {};
-  for (const b of state.buildings) {
-    if (b.status === 'demolishing') continue;
-    const n = nuisanceOf(state, b);
-    if (n > 0) { const kind = PLANTS[b.type].kind; byKind[kind] = (byKind[kind] || 0) + n; }
-  }
-  const KIND_LABEL = { nuclear: ['도시 근처 원전', 8], wind: ['도시 근처 풍력 소음', 4], coal: ['도시 근처 석탄 매연', 6], solar: ['산지 태양광 (산림 훼손)', 3] };
-  for (const kind in byKind) {
-    const def = KIND_LABEL[kind]; if (!def) continue;
-    add('nuisance:' + kind, def[0], -Math.min(def[1], byKind[kind] * ECON.moodNuisanceMult));
-  }
-
-  // 7) 원전 밀집 불안: 원전이 많아질수록 사고 걱정이 커짐 (친원전 노선이면 절반)
-  const alive = (b) => b.status !== 'demolishing' && b.status !== 'retired';
-  const bigN = state.buildings.filter((b) => b.type === 'nuclear' && alive(b)).length;
-  const smrN = state.buildings.filter((b) => b.type === 'smr' && alive(b)).length;
-  const anx = (Math.max(0, bigN - ECON.moodNukeFree) * ECON.moodNukePer + Math.max(0, smrN - ECON.moodSmrFree) * ECON.moodSmrPer) * (state.policies && state.policies.energy === 'nuclear' ? 0.5 : 1) * techMods(state).nukeAnxMult;   // 원자력 테크 "피동 안전 계통": 절반
-  if (anx > 0) add('nukes', '원전 밀집 불안 (원전 ' + bigN + '기' + (smrN ? ' · SMR ' + smrN + '기' : '') + ')', -Math.min(ECON.moodNukeCap, anx));
-
-  // 7-1) 원전 중대 사고의 상처: 사고가 난 뒤로 임기 끝까지 남음
-  if (state.accidentMood) add('accident', '원전 사고의 상처', -state.accidentMood);
-
-  // 7-2) 국토 사용: 땅 위의 태양광·풍력이 국토를 많이 차지하면 경관·농지 훼손 불만 (재생에너지 중심 노선이면 절반). 바다 위 풍력은 세지 않음
-  {
-    let landTiles = 0, used = 0;
-    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) { const t = state.grid[r][c]; if (t === LAND || t === MOUNTAIN) landTiles++; }
+    // 주민 불만: 도시 안·근처의 기피 시설
+    const byKind = {};
     for (const b of state.buildings) {
-      const p = PLANTS[b.type];
-      if (!p.renewable || !alive(b)) continue;
-      if (state.grid[b.row] && state.grid[b.row][b.col] === SEA) continue;
-      used += p.width * p.height;
+      if (b.status === 'demolishing') continue;
+      const n = nuisanceOf(state, b);
+      if (n > 0) { const kind = PLANTS[b.type].kind; byKind[kind] = (byKind[kind] || 0) + n; }
     }
-    const pct = landTiles > 0 ? used / landTiles * 100 : 0;
-    const v = Math.min(ECON.moodLandCap, Math.max(0, pct - ECON.moodLandFree) * ECON.moodLandPerPct) * (state.policies && state.policies.energy === 'renew' ? 0.5 : 1);
-    if (v > 0) add('land', '국토 잠식 (태양광·풍력이 땅의 ' + fmt(pct, 1) + '% 차지)', -v);
+    const KIND_LABEL = { nuclear: ['도시 근처 원전', 8], wind: ['도시 근처 풍력 소음', 4], coal: ['도시 근처 석탄 매연', 6], solar: ['산지 태양광 (산림 훼손)', 3] };
+    for (const kind in byKind) {
+      const def = KIND_LABEL[kind]; if (!def) continue;
+      parts.push(part('nuisance:' + kind, def[0], -Math.min(def[1], byKind[kind] * ECON.moodNuisanceMult)));
+    }
+    // 원전 밀집 불안: 원전이 많아질수록 사고 걱정이 커짐 (친원전 노선이면 절반)
+    const alive = (b) => b.status !== 'demolishing' && b.status !== 'retired';
+    const bigN = state.buildings.filter((b) => b.type === 'nuclear' && alive(b)).length;
+    const smrN = state.buildings.filter((b) => b.type === 'smr' && alive(b)).length;
+    const anx = (Math.max(0, bigN - ECON.moodNukeFree) * ECON.moodNukePer + Math.max(0, smrN - ECON.moodSmrFree) * ECON.moodSmrPer) * (state.policies && state.policies.energy === 'nuclear' ? 0.5 : 1) * techMods(state).nukeAnxMult;   // 원자력 테크 "피동 안전 계통": 절반
+    if (anx > 0) parts.push(part('nukes', '원전 밀집 불안 (원전 ' + bigN + '기' + (smrN ? ' · SMR ' + smrN + '기' : '') + ')', -Math.min(ECON.moodNukeCap, anx)));
+    // 국토 잠식: 땅 위의 태양광·풍력이 국토를 많이 차지하면 경관·농지 훼손 불만 (재생에너지 중심 노선이면 절반). 바다 위 풍력은 세지 않음
+    {
+      let landTiles = 0, used = 0;
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) { const t = state.grid[r][c]; if (t === LAND || t === MOUNTAIN) landTiles++; }
+      for (const b of state.buildings) {
+        const p = PLANTS[b.type];
+        if (!p.renewable || !alive(b)) continue;
+        if (state.grid[b.row] && state.grid[b.row][b.col] === SEA) continue;
+        used += p.width * p.height;
+      }
+      const pct = landTiles > 0 ? used / landTiles * 100 : 0;
+      const v = Math.min(ECON.moodLandCap, Math.max(0, pct - ECON.moodLandFree) * ECON.moodLandPerPct) * (state.policies && state.policies.energy === 'renew' ? 0.5 : 1);
+      if (v > 0) parts.push(part('land', '국토 잠식 (태양광·풍력이 땅의 ' + fmt(pct, 1) + '% 차지)', -v));
+    }
+    pillar('city', parts);
   }
 
-  // 8) 연구: 내 노선 테크 + 계통 테크(중립이면 지금 쓰는 설비들의 테크 평균)를 국민의 기대(해마다 오름)와 비교. 앞서면 +, 뒤처지면 −
-  const tiers = techWeightedTiers(state);
-  const expTech = moodTechExpected(state);
-  const tv = clamp((tiers - expTech) * ECON.moodTechSlope, ECON.moodTechMin, ECON.moodTechMax);
-  add('tech', (tv >= 0 ? '앞선 연구' : '뒤처진 연구') + ' (' + (techLineOf(state) ? '내 노선 + 계통 테크 ' : '주력 테크 평균 ') + fmt(tiers, 1) + '단계 · 기대 ' + fmt(expTech, 1) + '단계)', tv);
-
-  // 10) 정책 노선: 노선이 유지되는 동안 계속 작용
-  for (const key in (state.policies || {})) {
-    const def = (typeof POLICIES !== 'undefined') ? POLICIES[key] : null;
-    const opt = def && def.options[state.policies[key]];
-    if (opt && opt.happy) add('policy:' + key, def.name + ' · ' + opt.label, opt.happy);
-  }
-  // 11) 정책 공약: 지키면 +, 기한을 넘기면 − (늦게라도 지키면 벌점만 사라짐). 노선을 바꾸면 그 공약은 없어짐
-  for (const q of state.quests || []) {
-    const def = (typeof questById === 'function') ? questById(q.id) : null;
-    if (!def || !def.pledge) continue;
-    const tname = def.title.replace('재선 공약: ', '').replace('공약: ', '');
-    if (q.status === 'done') add('pledge:' + def.policy, (def.term2 ? '재선 공약 이행 · ' : '공약 이행 · ') + tname, def.kept || ECON.moodPledgeKept);
-    else if (q.status === 'failed') add('pledge:' + def.policy, (def.term2 ? '재선 공약 불이행 · ' : '공약 불이행 · ') + tname, -(def.broken || ECON.moodPledgeBroken));
-  }
-  // 11-1) 공약 기대감: 재선 공약을 과감하게 발표하면 한동안 민심이 오름 (선거에 도움). 시간이 지나면 사라짐
-  for (const q of state.quests || []) {
-    const def = (typeof questById === 'function') ? questById(q.id) : null;
-    if (!def || !def.term2) continue;
-    const bv = term2BoostNow(state, q, def);
-    if (bv > 0) add('campaign', '공약 기대감 · ' + def.title.replace('재선 공약: ', '') + ' (' + TERM2_LEVELS[def.lv].name + ')', bv);
-  }
-  // (전기요금 조정은 따로 요인이 없고, 위의 "전기 요금" 요인에 체감 요금으로 반영됨)
-
-  // ---- 그달의 충격 ----
-  // 주파수 사고는 그 시간 수요의 일부가 끊기는 정전이라 blackoutHours에도 들어 있음. 벌점 크기는 예전 그대로(정전 몫 + 주파수 몫)이되,
-  //  공급이 모자라서 난 정전과 주파수 사고를 한 줄씩으로 나눠 보여 줌 (같은 사고가 두 줄로 보이지 않게)
+  // ⑤ 미래·신뢰 = 연구 + 국정 신뢰(기본 + 정책 노선 + 공약)
   {
-    const f = report.freqHours || 0, fo = report.freqOnlyHours || 0, b = Math.max(0, report.blackoutHours - fo);
-    const total = (report.blackoutHours > 0 ? Math.min(ECON.happinessBlackoutCap, report.blackoutHours * ECON.happinessBlackout) : 0) + (f > 0 ? Math.min(ECON.happinessFreqCap, f * ECON.happinessFreq) : 0);
-    const shortPart = b > 0 ? Math.min(ECON.happinessBlackoutCap, b * ECON.happinessBlackout) : 0;
-    if (b > 0) items.push({ key: 'blackout', label: '정전 ' + b + '시간대', delta: -shortPart });
-    if (f > 0 && total - shortPart > 0) items.push({ key: 'freq', label: '주파수 사고 ' + f + '시간대', delta: -(total - shortPart) });
+    const parts = [];
+    // 연구: 내 노선 테크 + 계통 테크(중립이면 지금 쓰는 설비들의 테크 평균)를 국민의 기대(해마다 오름)와 비교
+    const tiers = techWeightedTiers(state), expTech = moodTechExpected(state);
+    const tv = clamp(ECON.moodResearchMid + (tiers - expTech) * ECON.moodTechSlope, 0, ECON.moodResearchMax);
+    { const p = part('tech', (tiers >= expTech ? '앞선 연구' : '뒤처진 연구') + ' (' + (techLineOf(state) ? '내 노선 + 계통 테크 ' : '주력 테크 평균 ') + fmt(tiers, 1) + '단계 · 기대 ' + fmt(expTech, 1) + '단계)', tv); p.keep = true; parts.push(p); }
+    { const p = part('trust', '국정 신뢰 (기본)', ECON.moodTrustBase); p.keep = true; parts.push(p); }
+    // 정책 노선: 노선이 유지되는 동안 계속 작용
+    for (const key in (state.policies || {})) {
+      const def = (typeof POLICIES !== 'undefined') ? POLICIES[key] : null;
+      const opt = def && def.options[state.policies[key]];
+      if (opt && opt.happy) parts.push(part('policy:' + key, def.name + ' · ' + opt.label, opt.happy));
+    }
+    // 정책 공약 · 재선 공약: 지키면 +, 기한을 넘기면 − (늦게라도 지키면 벌점만 사라짐). 노선을 바꾸면 그 공약은 없어짐
+    for (const q of state.quests || []) {
+      const def = (typeof questById === 'function') ? questById(q.id) : null;
+      if (!def || !def.pledge) continue;
+      const tname = def.title.replace('재선 공약: ', '').replace('공약: ', '');
+      if (q.status === 'done') parts.push(part('pledge:' + def.policy, (def.term2 ? '재선 공약 이행 · ' : '공약 이행 · ') + tname, def.kept || ECON.moodPledgeKept));
+      else if (q.status === 'failed') parts.push(part('pledge:' + def.policy, (def.term2 ? '재선 공약 불이행 · ' : '공약 불이행 · ') + tname, -(def.broken || ECON.moodPledgeBroken)));
+    }
+    // 공약 기대감: 재선 공약을 과감하게 발표하면 한동안 오름 (선거에 도움). 시간이 지나면 사라짐
+    for (const q of state.quests || []) {
+      const def = (typeof questById === 'function') ? questById(q.id) : null;
+      if (!def || !def.term2 || q.status === 'failed') continue;
+      const bv = term2BoostNow(state, q, def);
+      if (bv > 0) parts.push(part('campaign', '공약 기대감 · ' + def.title.replace('재선 공약: ', '') + ' (' + TERM2_LEVELS[def.lv].name + ')', bv));
+    }
+    pillar('future', parts);
   }
-  if (state.event && state.event.happyDelta) items.push({ key: 'event', label: state.event.name, delta: state.event.happyDelta });
 
-  // 높아진 눈높이: 요인들의 합이 moodSoftFrom(+30, 예상 민심 90)을 넘으면 넘는 부분은 moodSoftRate(절반)만 반영
-  //  → 민심 90 위로는 한두 가지만 잘해서는 안 오르고, 모든 요인을 고르게 관리해야 100에 닿음 (고점은 어렵게)
-  {
-    // 재선 뒤(2기)에는 눈높이가 한 단계 더 높아짐: 기준이 moodSoftFrom → moodSoftFrom2. 재선 공약을 지켜야 100에 닿음
-    const from = (state.history || []).length >= ECON.electionMonth ? ECON.moodSoftFrom2 : ECON.moodSoftFrom;
-    const raw = factors.reduce((s, f) => s + f.value, 0);
-    if (raw > from) add('soft', '높아진 눈높이 (요인 합이 +' + from + '을 넘는 부분은 절반만 반영)', -(raw - from) * (1 - ECON.moodSoftRate));
-  }
-  const target = clamp(ECON.moodBase + factors.reduce((s, f) => s + f.value, 0), 0, 100);
+  // 여론: 사건 선택 · 목표 보상과 벌칙처럼 한 번에 오르내린 민심이 남긴 여운. 매달 moodBuzzDecay배로 옅어짐
+  const buzz = r1((state.mood.buzz || 0) * ECON.moodBuzzDecay);
+  state.mood.buzz = Math.abs(buzz) < 0.1 ? 0 : (state.mood.buzz || 0) * ECON.moodBuzzDecay;
+  const extras = [];
+  if (Math.abs(buzz) >= 0.1) extras.push(part('buzz', buzz > 0 ? '좋은 여론 (사건·목표의 여운 · 매달 10%씩 옅어짐)' : '나쁜 여론 (사건·목표의 여운 · 매달 10%씩 옅어짐)', buzz));
+  if (state.accidentMood) extras.push(part('accident', '원전 사고의 상처 (임기 끝까지)', -state.accidentMood));
+
+  const sumP = pillars.reduce((s, p) => s + p.score, 0), sumX = extras.reduce((s, p) => s + p.value, 0);
+  const target = clamp(sumP + sumX, 0, 100);
   const pull = Math.round((target - state.happiness) * ECON.moodPull * 10) / 10;
-  const shock = items.reduce((s, it) => s + it.delta, 0);
-  return { items, factors, target: Math.round(target * 10) / 10, pull, total: pull + shock, price: priceInfo };
+  // factors: 예전 화면·도구가 쓰던 낱낱의 목록 (분야 이름을 달아 둠)
+  const factors = [];
+  for (const pl of pillars) for (const p of pl.parts) factors.push({ key: p.key, label: p.label, value: p.value, pillar: pl.key });
+  for (const p of extras) factors.push({ key: p.key, label: p.label, value: p.value, pillar: 'extra' });
+  return { pillars, extras, factors, items: [], target: Math.round(target * 10) / 10, pull, total: pull, price: priceInfo };
 }
+// 지금 상태로 본 분야별 점수 (결산을 기다리지 않고 화면에 보여 줄 때): 마지막 결산의 값
+function moodPillarsNow(state) { return (state.mood && state.mood.pillars) || null; }
 
 // ------------------------------------------------------------
 // 한 달 시뮬레이션

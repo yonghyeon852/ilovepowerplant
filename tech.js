@@ -34,12 +34,12 @@ const TECH = {
       ['3압 (3P) HRSG', '복합발전 출력 +6%'],
       ['TIT 1,500℃급 터빈', '복합발전 연료비·탄소 −6%'],
       ['3P 재열 (Reheat)', '복합발전 출력 +6%'],
-      ['탄소 포집 1세대', '복합발전 탄소 −15%'],
+      ['탄소 포집 1세대', '복합발전 탄소 −10%'],
       ['TIT 1,600℃급 터빈', '복합발전 연료비·탄소 −6%'],
-      ['탄소 포집 2세대', '복합발전 탄소 −15% 추가'],
+      ['탄소 포집 2세대', '복합발전 탄소 −10% 추가'],
       ['초임계 CO₂ 하부 사이클', '복합발전 출력 +10%'],
       ['TIT 1,700℃급 (세라믹 복합재)', '복합발전 연료비·탄소 −8%'],
-      ['순산소 연소 포집', '복합발전 탄소 −20% 추가'],
+      ['순산소 연소 포집', '복합발전 탄소 −15% 추가'],
     ]),
   },
   // 석탄화력: 석탄의 약점(탄소 · 느린 출력 조절 · 매연)을 하나씩 고쳐 감
@@ -47,15 +47,15 @@ const TECH = {
     name: '석탄화력', color: '#78909c',
     tiers: makeTiers(0.9, [
       ['초임계 보일러', '석탄 연료비·탄소 −5%'],
-      ['유연 운전 개조', '석탄 최소 출력 40% → 25% · 출력 조절 2배 빠름'],
+      ['유연 운전 개조', '석탄 최소 출력 55% → 40% · 출력 조절 2배 빠름 (한 시간에 10%)'],
       ['초초임계 (USC)', '석탄 연료비·탄소 −6%'],
       ['대용량 터빈', '석탄 출력 +8%'],
-      ['바이오매스 혼소', '석탄 탄소 −20%'],
+      ['바이오매스 혼소', '석탄 탄소 −15%'],
       ['탈황 · 집진 설비', '도시 근처 석탄 매연 불만 없음'],
-      ['암모니아 혼소', '석탄 탄소 −25% 추가'],
+      ['암모니아 혼소', '석탄 탄소 −15% 추가'],
       ['700℃급 A-USC', '석탄 연료비·탄소 −8%'],
       ['석탄 가스화 복합 (IGCC)', '석탄 출력 +10%'],
-      ['탄소 포집 · 저장 (CCS)', '석탄 탄소 −35% 추가'],
+      ['탄소 포집 · 저장 (CCS)', '석탄 탄소 −20% 추가'],
     ]),
   },
   nuclear: {
@@ -280,24 +280,24 @@ function techMods(state) {
   if (cc >= 2) m.ccgtCap *= 1.06;
   if (cc >= 3) ccEff(0.94);
   if (cc >= 4) m.ccgtCap *= 1.06;
-  if (cc >= 5) m.gtCo2 *= 0.85;   // 포집은 화력의 탄소를 줄여 줄 뿐 없애지는 못함 (끝까지 올려도 0.37 → 약 0.17 t/MWh)
+  if (cc >= 5) m.gtCo2 *= 0.90;   // 포집은 화력의 탄소를 줄여 줄 뿐 없애지는 못함 (끝까지 올려도 0.37 → 약 0.20 t/MWh: 20년 차 탄소 기준 0.22를 겨우 맞춤)
   if (cc >= 6) ccEff(0.94);
-  if (cc >= 7) m.gtCo2 *= 0.85;
+  if (cc >= 7) m.gtCo2 *= 0.90;
   if (cc >= 8) m.ccgtCap *= 1.10;
   if (cc >= 9) ccEff(0.92);
-  if (cc >= 10) m.gtCo2 *= 0.80;
+  if (cc >= 10) m.gtCo2 *= 0.85;
   // 석탄화력
   const coEff = (k) => { m.coalFuel *= k; m.coalCo2 *= k; };
   if (co >= 1) coEff(0.95);
-  if (co >= 2) { m.coalMinLoad = 0.25; m.coalRamp = PLANTS.coal.ramp * 2; }
+  if (co >= 2) { m.coalMinLoad = 0.40; m.coalRamp = PLANTS.coal.ramp * 2; }
   if (co >= 3) coEff(0.94);
   if (co >= 4) m.coalCap *= 1.08;
-  if (co >= 5) m.coalCo2 *= 0.80;
+  if (co >= 5) m.coalCo2 *= 0.85;
   if (co >= 6) m.coalNuisance = 0;
-  if (co >= 7) m.coalCo2 *= 0.75;
+  if (co >= 7) m.coalCo2 *= 0.85;
   if (co >= 8) coEff(0.92);
   if (co >= 9) m.coalCap *= 1.10;
-  if (co >= 10) m.coalCo2 *= 0.65;
+  if (co >= 10) m.coalCo2 *= 0.80;   // 끝까지 올려도 0.85 → 약 0.38 t/MWh (테크 없는 복합발전 수준)
 
   if (nu >= 1) { m.nuclearOppRange = 3; m.nuclearOppMult = 1.15; }
   if (typeof policyMods === 'function') m.nuclearOppRange = Math.max(1, m.nuclearOppRange + policyMods(state).nuclearOppDelta);   // 친원전: 반발 범위 −1칸

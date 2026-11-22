@@ -71,7 +71,7 @@ function expireEffects(state) {
     } else if (e.track === 'noBlackout' && e.reward) {
       if (!e.blackouts) {
         if (e.reward.money) state.money += e.reward.money;   // 사건에서 약속한 금액 그대로 (이미 그때의 경제 규모로 정해진 값. 예전에는 여기서 한 번 더 곱해져 보상이 몇 배로 부풀었음)
-        if (e.reward.happy) state.happiness = clamp(state.happiness + e.reward.happy, 0, 100);
+        if (e.reward.happy) moodBump(state, e.reward.happy);
         state.crisisWins = (state.crisisWins || 0) + 1;
         notices.push('🏅 ' + e.name + ' 극복: 정전 없이 버텨 국민 신뢰 상승 (' + rewardPartsRaw(e.reward) + ')');
       } else notices.push(e.name + ' 종료 (기간 중 정전 ' + e.blackouts + '개월 · 보너스 없음)');
@@ -164,7 +164,7 @@ const DECISIONS = [
     choices: [
       { label: '비축 물량 방출 + 장기 계약', cost: (s) => scaleMoney(s, 1200), desc: (s) => '−' + fmt(scaleMoney(s, 1200)) + '억 · 6개월 연료비 ×1.3', apply(s) { const c = scaleMoney(s, 1200); s.money -= c; addEffect(s, { name: 'LNG 위기 (연료비 ×1.3)', gasMult: 1.3, track: 'noBlackout', reward: { money: scaleMoney(s, 600), happy: 4 } }, 6); return '비축 방출·장기 계약 체결 (' + fmt(c) + '억): 6개월 연료비 ×1.3' + giveQuest(s, 'fuel_diversify'); } },
       { label: '시장에 맡긴다', desc: () => '9개월 연료비 ×1.8 · 비용 없음', apply(s) { addEffect(s, { name: 'LNG 위기 (연료비 ×1.8)', gasMult: 1.8, track: 'noBlackout', reward: { money: scaleMoney(s, 800), happy: 5 } }, 9); return '시장 가격 감수: 9개월 연료비 ×1.8' + giveQuest(s, 'fuel_diversify'); } },
-      { label: '전기요금 동결', desc: () => '9개월 연료비 ×1.8 + SMP 상한 −25% · 민심 +4', apply(s) { addEffect(s, { name: 'LNG 위기 + 요금 동결 (연료비 ×1.8, SMP 상한 −25%)', gasMult: 1.8, smpCapMult: 0.75, track: 'noBlackout', reward: { money: scaleMoney(s, 500), happy: 4 } }, 9); s.happiness = clamp(s.happiness + 4, 0, 100); return '요금 동결: 9개월 연료비 ×1.8, SMP 상한 −25%, 민심 +4' + giveQuest(s, 'fuel_diversify'); } },
+      { label: '전기요금 동결', desc: () => '9개월 연료비 ×1.8 + SMP 상한 −25% · 민심 +4', apply(s) { addEffect(s, { name: 'LNG 위기 + 요금 동결 (연료비 ×1.8, SMP 상한 −25%)', gasMult: 1.8, smpCapMult: 0.75, track: 'noBlackout', reward: { money: scaleMoney(s, 500), happy: 4 } }, 9); moodBump(s, 4); return '요금 동결: 9개월 연료비 ×1.8, SMP 상한 −25%, 민심 +4' + giveQuest(s, 'fuel_diversify'); } },
     ],
   },
   {
@@ -179,9 +179,9 @@ const DECISIONS = [
     id: 'tariff', cat: 'politics', crisis: true, icon: '🗳', name: '전기요금 인하 요구 시위',
     desc: '물가 부담에 지친 국민이 거리로 나와 전기요금 인하를 요구합니다. 요금을 내리면 발전 수입이 줄고, 거부하면 지지율이 떨어집니다.',
     choices: [
-      { label: '6개월 요금 인하', desc: () => 'SMP 상한 −25% (6개월) · 민심 +6', apply(s) { addEffect(s, { name: '전기요금 인하 (SMP 상한 −25%)', smpCapMult: 0.75 }, 6); s.happiness = clamp(s.happiness + 6, 0, 100); return '요금 인하: 6개월 SMP 상한 −25%, 민심 +6' + giveQuest(s, 'cheap_power'); } },
-      { label: '취약계층 지원금만 지급', cost: (s) => scaleMoney(s, 700), desc: (s) => '−' + fmt(scaleMoney(s, 700)) + '억 · 민심 +2', apply(s) { const c = scaleMoney(s, 700); s.money -= c; s.happiness = clamp(s.happiness + 2, 0, 100); return '지원금 ' + fmt(c) + '억 지급, 민심 +2'; } },
-      { label: '거부한다', desc: () => '민심 −5', apply(s) { s.happiness = clamp(s.happiness - 5, 0, 100); return '요금 인하 거부: 민심 −5'; } },
+      { label: '6개월 요금 인하', desc: () => 'SMP 상한 −25% (6개월) · 민심 +6', apply(s) { addEffect(s, { name: '전기요금 인하 (SMP 상한 −25%)', smpCapMult: 0.75 }, 6); moodBump(s, 6); return '요금 인하: 6개월 SMP 상한 −25%, 민심 +6' + giveQuest(s, 'cheap_power'); } },
+      { label: '취약계층 지원금만 지급', cost: (s) => scaleMoney(s, 700), desc: (s) => '−' + fmt(scaleMoney(s, 700)) + '억 · 민심 +2', apply(s) { const c = scaleMoney(s, 700); s.money -= c; moodBump(s, 2); return '지원금 ' + fmt(c) + '억 지급, 민심 +2'; } },
+      { label: '거부한다', desc: () => '민심 −5', apply(s) { moodBump(s, -5); return '요금 인하 거부: 민심 −5'; } },
     ],
   },
   // ---------- 재해 ----------
@@ -190,8 +190,8 @@ const DECISIONS = [
     cond: (s) => onlineOf(s, isThermal).length > 0,
     desc: '화력 발전소 한 곳에서 큰불이 났습니다. 인명 피해는 없지만 설비가 멈췄습니다. 복구 방식을 정하세요. 복구 기간을 정전 없이 넘기면 국민 신뢰가 오릅니다.',
     choices: [
-      { label: '긴급 복구', cost: (s) => scaleMoney(s, 500), desc: (s) => '−' + fmt(scaleMoney(s, 500)) + '억 · 1개월 정지', apply(s) { const b = pickRandom(onlineOf(s, isThermal)); const c = scaleMoney(s, 500); s.money -= c; const e = stopPlant(s, b, PLANTS[b.type].name + ' 화재 긴급 복구', 1); e.track = 'noBlackout'; e.reward = { happy: 3 }; s.happiness = clamp(s.happiness - 1, 0, 100); return PLANTS[b.type].name + ' 긴급 복구 (' + fmt(c) + '억): 1개월 정지'; } },
-      { label: '정상 복구', desc: () => '비용 없음 · 3개월 정지 · 민심 −2', apply(s) { const b = pickRandom(onlineOf(s, isThermal)); const e = stopPlant(s, b, PLANTS[b.type].name + ' 화재 복구', 3); e.track = 'noBlackout'; e.reward = { money: scaleMoney(s, 400), happy: 3 }; s.happiness = clamp(s.happiness - 2, 0, 100); return PLANTS[b.type].name + ' 화재: 3개월 정지, 민심 −2'; } },
+      { label: '긴급 복구', cost: (s) => scaleMoney(s, 500), desc: (s) => '−' + fmt(scaleMoney(s, 500)) + '억 · 1개월 정지', apply(s) { const b = pickRandom(onlineOf(s, isThermal)); const c = scaleMoney(s, 500); s.money -= c; const e = stopPlant(s, b, PLANTS[b.type].name + ' 화재 긴급 복구', 1); e.track = 'noBlackout'; e.reward = { happy: 3 }; moodBump(s, -1); return PLANTS[b.type].name + ' 긴급 복구 (' + fmt(c) + '억): 1개월 정지'; } },
+      { label: '정상 복구', desc: () => '비용 없음 · 3개월 정지 · 민심 −2', apply(s) { const b = pickRandom(onlineOf(s, isThermal)); const e = stopPlant(s, b, PLANTS[b.type].name + ' 화재 복구', 3); e.track = 'noBlackout'; e.reward = { money: scaleMoney(s, 400), happy: 3 }; moodBump(s, -2); return PLANTS[b.type].name + ' 화재: 3개월 정지, 민심 −2'; } },
     ],
   },
   {
@@ -201,8 +201,8 @@ const DECISIONS = [
     choices: [
       { label: '예방 정지·점검', cost: (s) => scaleMoney(s, 300), desc: (s) => '원전 1기 1개월 정지 · 점검비 ' + fmt(scaleMoney(s, 300)) + '억', apply(s) { const b = pickRandom(onlineOf(s, isNuke)); const c = scaleMoney(s, 300); s.money -= c; const e = stopPlant(s, b, PLANTS[b.type].name + ' 안전 점검', 1); e.track = 'noBlackout'; e.reward = { happy: 3 }; return PLANTS[b.type].name + ' 예방 정지 1개월, 점검비 ' + fmt(c) + '억'; } },
       { label: '그대로 운전', desc: () => '20% 확률로 사고 (6개월 정지 · 민심 −15)', apply(s) {
-        if (Math.random() < 0.2) { const b = pickRandom(onlineOf(s, isNuke)); stopPlant(s, b, PLANTS[b.type].name + ' 사고 복구', 6); const hit = Math.round(15 * policyMods(s).accidentMult); s.happiness = clamp(s.happiness - hit, 0, 100); return '⚠ 해일로 ' + PLANTS[b.type].name + ' 냉각 계통 손상: 6개월 정지, 민심 −' + hit; }
-        s.happiness = clamp(s.happiness + 1, 0, 100); return '해일은 원전을 비껴갔습니다. 침착한 대응에 민심 +1';
+        if (Math.random() < 0.2) { const b = pickRandom(onlineOf(s, isNuke)); stopPlant(s, b, PLANTS[b.type].name + ' 사고 복구', 6); const hit = Math.round(15 * policyMods(s).accidentMult); moodBump(s, -(hit)); return '⚠ 해일로 ' + PLANTS[b.type].name + ' 냉각 계통 손상: 6개월 정지, 민심 −' + hit; }
+        moodBump(s, 1); return '해일은 원전을 비껴갔습니다. 침착한 대응에 민심 +1';
       } },
     ],
   },
@@ -220,8 +220,8 @@ const DECISIONS = [
     cond: (s) => s.buildings.some((b) => b.status === 'online' && plantAgeStatus(b) === 'aging'),
     desc: '노후 설비에서 큰 사고가 났습니다. 국민 불안이 커졌습니다. 설비를 폐쇄할지, 큰돈을 들여 수명을 연장할지 정하세요.',
     choices: [
-      { label: '폐쇄한다', desc: () => '노후 설비 1기 영구 정지 · 민심 −4', apply(s) { const b = pickRandom(s.buildings.filter((x) => x.status === 'online' && plantAgeStatus(x) === 'aging')); b.status = 'retired'; s.happiness = clamp(s.happiness - 4, 0, 100); return PLANTS[b.type].name + ' 영구 정지 (철거 필요), 민심 −4' + giveQuest(s, 'safety_audit'); } },
-      { label: '대수선으로 수명 연장', desc: (s) => '건설비의 30% · 3개월 정지 · 나이 5년 젊어짐 · 민심 −6', apply(s) { const b = pickRandom(s.buildings.filter((x) => x.status === 'online' && plantAgeStatus(x) === 'aging')); const c = Math.round(plantStats(s, b.type).capex * 0.3); s.money -= c; b.age = Math.max(0, b.age - 60); stopPlant(s, b, PLANTS[b.type].name + ' 대수선', 3); s.happiness = clamp(s.happiness - 6, 0, 100); return PLANTS[b.type].name + ' 대수선 (' + fmt(c) + '억): 3개월 정지, 수명 5년 연장, 민심 −6' + giveQuest(s, 'safety_audit'); } },
+      { label: '폐쇄한다', desc: () => '노후 설비 1기 영구 정지 · 민심 −4', apply(s) { const b = pickRandom(s.buildings.filter((x) => x.status === 'online' && plantAgeStatus(x) === 'aging')); b.status = 'retired'; moodBump(s, -4); return PLANTS[b.type].name + ' 영구 정지 (철거 필요), 민심 −4' + giveQuest(s, 'safety_audit'); } },
+      { label: '대수선으로 수명 연장', desc: (s) => '건설비의 30% · 3개월 정지 · 나이 5년 젊어짐 · 민심 −6', apply(s) { const b = pickRandom(s.buildings.filter((x) => x.status === 'online' && plantAgeStatus(x) === 'aging')); const c = Math.round(plantStats(s, b.type).capex * 0.3); s.money -= c; b.age = Math.max(0, b.age - 60); stopPlant(s, b, PLANTS[b.type].name + ' 대수선', 3); moodBump(s, -6); return PLANTS[b.type].name + ' 대수선 (' + fmt(c) + '억): 3개월 정지, 수명 5년 연장, 민심 −6' + giveQuest(s, 'safety_audit'); } },
     ],
   },
   // ---------- 정치 ----------
@@ -229,9 +229,9 @@ const DECISIONS = [
     id: 'fake_news', cat: 'politics', crisis: true, icon: '📢', name: '전력 요금 폭리 루머 확산',
     desc: '"정부가 전기를 비싸게 팔아 폭리를 취한다"는 루머가 SNS에서 번지고 있습니다. 그대로 두면 지지율이 크게 떨어집니다.',
     choices: [
-      { label: '공개 검증·설명회', cost: (s) => scaleMoney(s, 500), desc: (s) => '−' + fmt(scaleMoney(s, 500)) + '억 · 민심 −2', apply(s) { const c = scaleMoney(s, 500); s.money -= c; s.happiness = clamp(s.happiness - 2, 0, 100); return '공개 검증 (' + fmt(c) + '억): 민심 하락을 −2로 막음' + giveQuest(s, 'cheap_power'); } },
-      { label: '요금 환급', cost: (s) => scaleMoney(s, 1200), desc: (s) => '−' + fmt(scaleMoney(s, 1200)) + '억 · 민심 +3', apply(s) { const c = scaleMoney(s, 1200); s.money -= c; s.happiness = clamp(s.happiness + 3, 0, 100); return '요금 환급 (' + fmt(c) + '억): 민심 +3'; } },
-      { label: '무시한다', desc: () => '민심 −10', apply(s) { s.happiness = clamp(s.happiness - 10, 0, 100); return '루머 방치: 민심 −10'; } },
+      { label: '공개 검증·설명회', cost: (s) => scaleMoney(s, 500), desc: (s) => '−' + fmt(scaleMoney(s, 500)) + '억 · 민심 −2', apply(s) { const c = scaleMoney(s, 500); s.money -= c; moodBump(s, -2); return '공개 검증 (' + fmt(c) + '억): 민심 하락을 −2로 막음' + giveQuest(s, 'cheap_power'); } },
+      { label: '요금 환급', cost: (s) => scaleMoney(s, 1200), desc: (s) => '−' + fmt(scaleMoney(s, 1200)) + '억 · 민심 +3', apply(s) { const c = scaleMoney(s, 1200); s.money -= c; moodBump(s, 3); return '요금 환급 (' + fmt(c) + '억): 민심 +3'; } },
+      { label: '무시한다', desc: () => '민심 −10', apply(s) { moodBump(s, -10); return '루머 방치: 민심 −10'; } },
     ],
   },
   {
@@ -248,7 +248,7 @@ const DECISIONS = [
     desc: '국제 탄소 협약 가입을 요청받았습니다. 가입하면 탄소세가 즉시 30% 오르지만 3년 동안 무탄소 설비(원전·SMR·태양광·풍력) 건설비가 20% 싸집니다. 불참하면 3년 동안 전력 수출이 막히고 국제 여론이 나빠집니다.',
     choices: [
       { label: '가입한다', desc: () => '탄소세 +30% · 3년간 무탄소 설비 건설비 −20%', apply(s) { s.carbonTax = Math.min(ECON.carbonTaxMax, Math.round(s.carbonTax * 1.3)); addEffect(s, { name: '탄소 협약 (무탄소 설비 건설비 −20%)', capexMult: 0.8 }, 36); return '탄소 협약 가입: 탄소세 +30%, 3년간 무탄소 건설비 −20%' + giveQuest(s, 'clean_build'); } },
-      { label: '불참한다', desc: () => '3년간 수출 금지 · 민심 −3', apply(s) { addEffect(s, { name: '수출 금지 (협약 불참)', exportBan: true }, 36); s.happiness = clamp(s.happiness - 3, 0, 100); return '협약 불참: 3년간 수출 금지, 민심 −3'; } },
+      { label: '불참한다', desc: () => '3년간 수출 금지 · 민심 −3', apply(s) { addEffect(s, { name: '수출 금지 (협약 불참)', exportBan: true }, 36); moodBump(s, -3); return '협약 불참: 3년간 수출 금지, 민심 −3'; } },
     ],
   },
   {
@@ -256,17 +256,17 @@ const DECISIONS = [
     cond: (s) => s.buildings.some((b) => PLANTS[b.type].kind === 'nuclear' && (b.status === 'online' || b.status === 'building')),
     desc: '원전 반대 단체가 대규모 시위를 벌이고 있습니다. 공청회를 열어 설득할지, 강행할지 정하세요.',
     choices: [
-      { label: '공청회·안전 설명회', cost: (s) => scaleMoney(s, 600), desc: (s) => '−' + fmt(scaleMoney(s, 600)) + '억 · 민심 −1', apply(s) { const c = scaleMoney(s, 600); s.money -= c; s.happiness = clamp(s.happiness - 1, 0, 100); return '공청회 개최 (' + fmt(c) + '억): 민심 하락을 −1로 막음'; } },
-      { label: '강행한다', desc: () => '민심 −6 · 건설 중인 원전 3개월 지연', apply(s) { s.happiness = clamp(s.happiness - 6, 0, 100); let n = 0; for (const b of s.buildings) if (PLANTS[b.type].kind === 'nuclear' && b.status === 'building') { b.monthsLeft += 3; n++; } return '강행: 민심 −6' + (n ? ', 건설 중인 원전 ' + n + '기 3개월 지연' : ''); } },
+      { label: '공청회·안전 설명회', cost: (s) => scaleMoney(s, 600), desc: (s) => '−' + fmt(scaleMoney(s, 600)) + '억 · 민심 −1', apply(s) { const c = scaleMoney(s, 600); s.money -= c; moodBump(s, -1); return '공청회 개최 (' + fmt(c) + '억): 민심 하락을 −1로 막음'; } },
+      { label: '강행한다', desc: () => '민심 −6 · 건설 중인 원전 3개월 지연', apply(s) { moodBump(s, -6); let n = 0; for (const b of s.buildings) if (PLANTS[b.type].kind === 'nuclear' && b.status === 'building') { b.monthsLeft += 3; n++; } return '강행: 민심 −6' + (n ? ', 건설 중인 원전 ' + n + '기 3개월 지연' : ''); } },
     ],
   },
   {
     id: 'election', cat: 'politics', crisis: true, icon: '🗳', name: '총선 공약', minYear: 2,
     desc: '총선이 다가옵니다. 여당이 에너지 공약을 내걸어야 합니다. 공약은 지지율을 올리지만, 지키지 못하면 그만큼 잃습니다.',
     choices: [
-      { label: '전기요금 안정 공약', desc: () => '민심 +4 · 1년 안에 SMP 10% 인하 목표', apply(s) { s.happiness = clamp(s.happiness + 4, 0, 100); return '요금 안정 공약: 민심 +4' + giveQuest(s, 'cheap_power'); } },
-      { label: '탈탄소 공약', desc: () => '민심 +4 · 3년 안에 무탄소 설비 3기 목표', apply(s) { s.happiness = clamp(s.happiness + 4, 0, 100); return '탈탄소 공약: 민심 +4' + giveQuest(s, 'clean_build'); } },
-      { label: '공약 없이 간다', desc: () => '민심 −2', apply(s) { s.happiness = clamp(s.happiness - 2, 0, 100); return '공약 없음: 민심 −2'; } },
+      { label: '전기요금 안정 공약', desc: () => '민심 +4 · 1년 안에 SMP 10% 인하 목표', apply(s) { moodBump(s, 4); return '요금 안정 공약: 민심 +4' + giveQuest(s, 'cheap_power'); } },
+      { label: '탈탄소 공약', desc: () => '민심 +4 · 3년 안에 무탄소 설비 3기 목표', apply(s) { moodBump(s, 4); return '탈탄소 공약: 민심 +4' + giveQuest(s, 'clean_build'); } },
+      { label: '공약 없이 간다', desc: () => '민심 −2', apply(s) { moodBump(s, -2); return '공약 없음: 민심 −2'; } },
     ],
   },
   // ---------- 기회 (낮은 확률로 랜덤) ----------
@@ -425,8 +425,8 @@ function pickDecision(state) {
     const pool = DECISIONS.filter((d) => !d.crisis && d.cat !== 'policy' && d.cat !== 'buzz' && usable(d));
     if (pool.length) return pickRandom(pool);
   }
-  // 화제: 세태를 풍자한 가벼운 사건 (events3.js · events4.js). 평균 석 달 남짓에 한 번
-  //  - 마지막 화제 뒤 BUZZ_GAP_MIN개월은 쉬고, 그 뒤로 달마다 BUZZ_CHANCE 확률 → 간격이 2~7개월로 들쭉날쭉
+  // 정국 카드: 에너지 정책을 둘러싼 정치·사회 사건 (events4.js). 평균 넉 달 남짓에 한 번
+  //  - 마지막 카드 뒤 BUZZ_GAP_MIN개월은 쉬고, 그 뒤로 달마다 BUZZ_CHANCE 확률 → 간격이 3~8개월로 들쭉날쭉
   //  - 이 판에서 아직 안 나온 카드부터 뽑음 (다 나왔으면 5년 지난 것). 때를 타는 카드는 그때 더 잘 뽑힘(가중치 w)
   if ((state.history || []).length >= BUZZ_FROM_MONTH && now - (state.lastBuzzAt === undefined ? -99 : state.lastBuzzAt) >= BUZZ_GAP_MIN && Math.random() < BUZZ_CHANCE) {
     const seen = new Set(recent.map((r) => r.id));
@@ -437,8 +437,8 @@ function pickDecision(state) {
   return null;
 }
 const BUZZ_FROM_MONTH = 2;   // 화제가 나오기 시작하는 때 (시작 뒤 몇 개월)
-const BUZZ_GAP_MIN = 2;      // 화제와 화제 사이 최소 간격 (개월)
-const BUZZ_CHANCE = 0.4;     // 그 뒤로 달마다 나올 확률 → 평균 간격 = BUZZ_GAP_MIN + 1 / BUZZ_CHANCE − 1 = 3.5개월
+const BUZZ_GAP_MIN = 3;      // 정국 카드 사이 최소 간격 (개월). 예전의 가벼운 화제 카드보다 무게가 있어 한 달 늘림
+const BUZZ_CHANCE = 0.4;     // 그 뒤로 달마다 나올 확률 → 평균 간격 = BUZZ_GAP_MIN + 1 / BUZZ_CHANCE − 1 = 4.5개월
 function pickWeighted(arr) {
   const total = arr.reduce((s, d) => s + (d.w || 1), 0);
   let pick = Math.random() * total;
@@ -526,9 +526,9 @@ const QUESTS = [
   {
     id: 'happy90', icon: '😊', title: '민심 75 회복', months: 36, reward: { money: 1000 }, penalty: { happy: 2 },
     desc: '민심을 75 이상으로 끌어올리세요.',
-    cond: (s) => s.happiness < 55,
-    check: (s) => s.happiness >= 75,
-    progress: (s) => fmt(s.happiness) + ' / 75',
+    cond: (s) => s.happiness < 48,
+    check: (s) => s.happiness >= 62,
+    progress: (s) => fmt(s.happiness) + ' / 62',
   },
   // ---------- 사건의 선택에서 이어지는 후속 목표 (자동으로는 안 주어짐) ----------
   {
@@ -698,9 +698,9 @@ const TERM2_LEAD_MONTHS = 12;        // 선거 몇 달 전에 공약을 발표�
 const TERM2_DEADLINE_MONTH = 216;    // 18년 차 말 (임기 216번째 달)
 const TERM2_BOOST_FULL = 12, TERM2_BOOST_FADE = 12;   // 공약 기대감: 발표 뒤 12개월은 온전히, 그 뒤 12개월에 걸쳐 사라짐
 const TERM2_LEVELS = [
-  { name: '현실적인 약속', short: '현실적', kept: 10, broken: 12, hit: 25, boost: 0 },
-  { name: '과감한 약속',   short: '과감',   kept: 15, broken: 20, hit: 40, boost: 6 },
-  { name: '파격적인 약속', short: '파격',   kept: 20, broken: 25, hit: 55, boost: 12 },
+  { name: '현실적인 약속', short: '현실적', kept: 2,   broken: 3, hit: 8,  boost: 0 },
+  { name: '과감한 약속',   short: '과감',   kept: 3.5, broken: 5, hit: 12, boost: 2 },
+  { name: '파격적인 약속', short: '파격',   kept: 5,   broken: 7, hit: 16, boost: 4 },
 ];
 function avg12Of(s, f) { const h = (s.history || []).slice(-12); return h.length ? h.reduce((a, x) => a + (f(x) || 0), 0) / h.length : 0; }
 // 연구 공약이 보는 트리: 내 노선의 트리 전부 (중립이면 가장 많이 올린 두 트리) + 계통
@@ -726,6 +726,7 @@ const TERM2_THEMES = [
     targets: [0.70, 0.55, 0.40], fmtT: pct0, goal: (t) => '요금 ' + pct0(t),
     brief: (t) => '소비자 요금이 1년 평균 기대 요금의 ' + pct0(t) + ' 이하', value: (s) => { const f = feltYearOf(s); return f ? f.felt / f.ref : 1; }, ok: (v, t) => v <= t, fmtV: pct0 },
   { key: 'gas', ico: '🛡', color: '#5ad1e0', title: '에너지 자립', what: '가스 발전(복합발전)이 1년 평균 발전량에서 차지하는 비중',
+    show: (s) => pol(s, 'energy') !== 'thermal',   // 화력 중심 노선에는 내지 않음: 복합발전을 주력으로 키우기로 한 노선에 복합발전을 줄이라는 약속은 어긋남
     targets: [0.25, 0.10, 0.03], fmtT: pct0, goal: (t) => '가스 ' + pct0(t),
     brief: (t) => '가스 발전이 1년 평균 발전량의 ' + pct0(t) + ' 이하', value: (s) => ((s.history || []).length >= 12 ? avg12Of(s, (x) => (x.gasS === undefined ? 1 : x.gasS)) : 1), ok: (v, t) => v <= t, fmtV: pct0 },
   { key: 'tech', ico: '🔬', color: '#7fb6ff', title: '기술 선도국', what: '내 노선의 테크트리와 계통 테크를 모두 몇 단계까지 올리는가 (가장 낮은 것 기준)',
@@ -864,7 +865,7 @@ function updateQuests(state, report) {
       q.status = 'done'; q.endAt = now;
       if (def.reward.money) state.money += scaleMoney(state, def.reward.money);
       if (q.base && q.base.refund) state.money += q.base.refund;   // 국채 차환: 낸 이자의 절반 환급
-      if (def.reward.happy) state.happiness = clamp(state.happiness + def.reward.happy, 0, 100);
+      if (def.reward.happy) moodBump(state, def.reward.happy);
       notices.push('🎉 목표 달성: ' + def.title + ' (' + rewardText(def) + ')');
       continue;
     }
@@ -875,7 +876,7 @@ function updateQuests(state, report) {
 // 실패 벌칙: 민심 하락은 기본, 목표에 따라 벌금·탄소세 인상·연료비 충격이 더해짐
 function applyPenalty(state, def) {
   const p = def.penalty || {};
-  if (p.happy) state.happiness = clamp(state.happiness - p.happy, 0, 100);
+  if (p.happy) moodBump(state, -(p.happy));
   if (p.money) state.money -= p.money;
   if (p.carbonTaxUp) state.carbonTax = Math.min(ECON.carbonTaxMax, Math.round(state.carbonTax * (1 + p.carbonTaxUp)));
   if (p.gasShock) addEffect(state, { name: '가스 의존 후폭풍 (연료비 ×1.3)', gasMult: 1.3 }, 3);
@@ -899,7 +900,7 @@ const POLICIES = {
     desc: '앞으로 어떤 발전을 주력으로 키울지 정합니다. 8년 동안 유지되고, 그 뒤 한 번 다시 고를 수 있습니다.',
     options: {
       nuclear: { label: '친원전', pledge: 'pledge_energy_nuclear', good: ['원전·SMR 건설비 −25%', '원전이 많아도 불안 절반'], bad: ['원전 사고 타격 1.5배', '반원전 시위가 잦아짐'], desc: '원전·SMR 건설비 −25% · 원전 밀집 불안 절반 · 원전 사고 타격 1.5배' },
-      thermal: { label: '화력 중심', pledge: 'pledge_energy_thermal', good: ['복합발전·석탄 건설비 −20%', '화력 연료비 −10%'], bad: ['탄소·가스 부담이 끝까지 남음 (쉽지만 고점이 낮은 길)'], desc: '복합발전·석탄 건설비 −20% · 화력 연료비 −10% · 쉽지만 탄소·가스 부담이 끝까지 남아 고점이 낮음' },
+      thermal: { label: '화력 중심', pledge: 'pledge_energy_thermal', good: ['복합발전·석탄 건설비 −20%', '화력 연료비 −10%'], bad: ['환경 점수를 거의 못 받음 (쉽지만 고점이 낮은 길)'], desc: '복합발전·석탄 건설비 −20% · 화력 연료비 −10% · 쉽지만 탄소 때문에 환경 점수를 거의 못 받아 고점이 낮음' },
       renew:   { label: '재생에너지 중심', happy: 1, pledge: 'pledge_energy_renew', good: ['태양광·풍력·배터리 건설비 −20%', '땅을 많이 써도 불만 절반'], bad: ['원전·SMR 건설비 +20%'], desc: '태양광·풍력·배터리 건설비 −20% · 국토 잠식 불만 절반 · 원전·SMR 건설비 +20% · 민심 +1' },
       neutral: { label: '중립', desc: '보너스도 제약도 없음' },
     },
@@ -907,15 +908,15 @@ const POLICIES = {
   market: {
     name: '전력시장 정책', icon: '⚖', at: 24,
     desc: '전기값을 시장에 맡길지, 정부가 누를지 정합니다.',    options: {
-      free:      { label: '시장 자유화', happy: -1, pledge: 'pledge_market_free', good: ['전기 판매 수입 증가', '초과 이윤 환수 60% → 50%'], bad: ['소비자 요금 상승'], desc: '돈을 더 버는 노선: 초과 이윤 환수 50% (기본 60%) · SMP 마진 1.3배 → 1.5배 · 기저(원전·석탄) 정산조정계수 75% → 85% · 대신 민심 −1, 전기값이 올라 요금 불만도 커짐 · 요금 불만 하한 −10 → −15 · 요금 시위가 잦아짐' },
-      regulated: { label: '요금 규제', happy: 1, pledge: 'pledge_market_regulated', good: ['소비자 요금 하락', '용량 요금 1.5배'], bad: ['초과 이윤 환수 60% → 70%', '원전·석탄 정산 단가 하락'], desc: '민심을 얻는 노선: 민심 +1, SMP 상한 −15%로 전기값이 내려가 요금 만족이 오름 · 요금 불만 하한 −10 → −5 · 대신 초과 이윤 환수 70% · 기저 정산조정계수 75% → 65% · 용량 요금은 1.5배(정부 손실 보전)' },
+      free:      { label: '시장 자유화', happy: -1, pledge: 'pledge_market_free', good: ['전기 판매 수입 증가', '초과 이윤 환수 60% → 50%'], bad: ['소비자 요금 상승'], desc: '돈을 더 버는 노선: 초과 이윤 환수 50% (기본 60%) · SMP 마진 1.3배 → 1.5배 · 기저(원전·석탄) 정산조정계수 75% → 85% · 대신 민심 −1, 전기값이 올라 요금 점수가 내려감 · 요금 시위가 잦아짐' },
+      regulated: { label: '요금 규제', happy: 1, pledge: 'pledge_market_regulated', good: ['소비자 요금 하락', '용량 요금 1.5배'], bad: ['초과 이윤 환수 60% → 70%', '원전·석탄 정산 단가 하락'], desc: '민심을 얻는 노선: 민심 +1, SMP 상한 −15%로 전기값이 내려가 요금 점수가 오름 · 대신 초과 이윤 환수 70% · 기저 정산조정계수 75% → 65% · 용량 요금은 1.5배(정부 손실 보전)' },
     },
   },
   industry: {
     name: '산업 정책', icon: '🏭', at: 36,
     desc: '나라를 어떤 방향으로 키울지 정합니다.',    options: {
       growth:  { label: '제조업 육성', happy: -3, pledge: 'pledge_industry_growth', good: ['인구·수요 증가 1.25배', '공장 유치 제안 2배'], bad: [], desc: '인구·수요 증가 1.25배 · 공장·데이터센터 유치 제안 2배 · 유치 보조금 1.3배 · 민심 −3 (환경·과밀 부담)' },
-      balance: { label: '균형 발전', happy: 2, pledge: 'pledge_industry_balance', good: ['모든 건설비 −10%', '새 도시 조성비 절반'], bad: ['인구·수요 증가 0.85배'], desc: '인구·수요 증가 0.85배 · 모든 설비 건설비 −10% · 새 도시 조성비 −50% · 과밀 벌점 상한 −1 · 민심 +2' },
+      balance: { label: '균형 발전', happy: 2, pledge: 'pledge_industry_balance', good: ['모든 건설비 −10%', '새 도시 조성비 절반'], bad: ['인구·수요 증가 0.85배'], desc: '인구·수요 증가 0.85배 · 모든 설비 건설비 −10% · 새 도시 조성비 −50% · 민심 +2' },
     },
   },
   rd: {
@@ -974,7 +975,7 @@ for (const key of Object.keys(POLICIES)) {
         if (!s.policies) s.policies = {};
         const prev = s.policies[key];
         let msg = pol.name + ': ' + pol.options[opt].label;
-        if (prev && prev !== opt) { s.happiness = clamp(s.happiness - 4, 0, 100); msg += ' (정책 번복, 민심 −4)'; }
+        if (prev && prev !== opt) { moodBump(s, -4); msg += ' (정책 번복, 민심 −4)'; }
         else if (prev) msg += ' (유지)';
         const hv = pol.options[opt].happy || 0;
         if (hv) msg += ' · 노선이 유지되는 동안 민심 ' + (hv > 0 ? '+' : '−') + Math.abs(hv);

@@ -474,7 +474,7 @@ canvas#forecast-chart, canvas#report-chart { display: block; width: 100%; height
 .ev.bad { background: rgba(242, 97, 106, 0.16) !important; }
 .ev.warn { background: rgba(245, 184, 61, 0.12) !important; }
 /* 민심 요인: 무엇이 행복도를 올리고 깎았나 */
-.report-mood { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 6px; margin: 2px 0 10px; font-size: 0.8rem; }
+.report-mood { display: block; margin: 2px 0 10px; text-align: left; }
 .report-mood .k { color: var(--muted); margin-right: 2px; }
 .report-mood .mf { padding: 2px 9px; border-radius: 999px; background: var(--panel-2); white-space: nowrap; cursor: default; }
 .report-mood .mf.good b { color: var(--good); } .report-mood .mf.bad b { color: var(--bad); }
@@ -767,9 +767,6 @@ canvas#forecast-chart, canvas#report-chart { display: block; width: 100%; height
 .tr-line i { font-style: normal; font-size: 0.66rem; font-weight: 600; margin-left: 5px; padding: 1px 6px; border-radius: 999px; background: rgba(255, 179, 0, 0.16); color: #ffca5f; }
 
 /* 21. 자동 진행 버튼 */
-#auto-month { padding: 9px 11px; white-space: nowrap; font-size: 0.86rem; }
-#auto-month.on { border-color: #ffca5f; color: #ffca5f; background: rgba(255, 202, 95, 0.12); }
-#auto-month:disabled { opacity: 0.4; cursor: default; }
 
 /* 22. 재선 공약 카드: 큰 카드 여러 장을 나란히 놓고 하나를 고름 (카드마다 고유 색 --c, 등장 순서 --i) */
 #decision:has(.modal.cards) { background: rgba(4, 6, 10, 0.88); }
@@ -898,7 +895,6 @@ body.mobile .date-box { flex: 1 1 100%; justify-content: flex-start; gap: 6px; }
 body.mobile .date-box > :first-child { margin-right: auto; }
 body.mobile #next-month { padding: 8px 14px; }
 body.mobile #next-month small, body.mobile #report-close small { display: none; }
-body.mobile #auto-month { padding: 8px 10px; }
 body.mobile #menu summary { padding: 8px 10px; }
 body.mobile #menu .menu-list button { padding: 10px 12px; }
 /* 본문: 지도가 남는 높이를 다 쓰고, 그 아래에 칸 하나 + 탭 줄 */
@@ -928,12 +924,12 @@ body.mobile #mnav { order: 3; display: flex; flex: 0 0 auto; margin: 0 -6px; pad
 body.mobile.mplacing #mnav { display: none; }
 /* 설비 놓을 자리 확정 줄 */
 body.mobile.mplacing #mplace { order: 3; display: flex; flex: 0 0 auto; align-items: center; gap: 8px; margin: 0 -6px; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--accent); }
-#mplace .mp-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.35; }
-#mplace .mp-name { font-size: 0.95rem; }
-#mplace .mp-info { font-size: 0.82rem; color: var(--good); }
+#mplace .mp-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.35; height: 4.9em; overflow: hidden; }   /* 높이 고정: 글 길이에 따라 지도 크기가 바뀌지 않게 */
+#mplace .mp-name { font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#mplace .mp-info { font-size: 0.8rem; color: var(--good); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-height: 2.7em; }
 #mplace .mp-info.bad { color: var(--bad); }
 #mplace .mp-info.warn { color: var(--warn, #ffb300); }
-#mplace small { color: var(--muted); font-size: 0.68rem; }
+#mplace small { color: var(--muted); font-size: 0.66rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #mplace button { flex: 0 0 auto; padding: 10px 14px; white-space: nowrap; }
 /* 지도 위: 확대 버튼을 보이고, 덜 중요한 표시는 숨김 */
 body.mobile #mzoom { position: absolute; z-index: 4; right: 6px; bottom: 6px; display: flex; flex-direction: row; gap: 5px; }
@@ -1051,3 +1047,40 @@ body.mobile table.rank-table :is(th, td) { padding-left: 5px; padding-right: 5px
 }
 /* 결산 창의 "다음 달로": 휴대폰에서는 내용을 내리지 않아도 누를 수 있게 창 아래에 붙여 둠 */
 body.mobile #report .modal-actions { position: sticky; bottom: -14px; margin: 10px -12px -14px; padding: 8px 12px 12px; background: linear-gradient(to bottom, transparent, var(--panel) 30%); }
+
+/* 27. 민심 성적표: 다섯 분야(각 20점)의 점수 막대 */
+.mood-eq { margin: 8px 0 2px; font-size: 0.9rem; }
+.mood-eq b { font-size: 1.05rem; }
+.mood-eq small { color: var(--muted); }
+.mood-bars { display: grid; gap: 5px; margin: 6px 0 8px; }
+.mb { display: grid; grid-template-columns: 6.4em minmax(0, 1fr) 2.4em 2.2em 3em; align-items: center; gap: 6px; font-size: 0.84rem; text-align: left; }
+.mb .n { white-space: nowrap; }
+.mb .bar { height: 10px; border-radius: 5px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.mb .bar i { display: block; height: 100%; border-radius: 5px; background: var(--good); }
+.mb.mid .bar i { background: var(--warn); }
+.mb.bad .bar i { background: var(--bad); }
+.mb b { text-align: right; font-variant-numeric: tabular-nums; }
+.mb small { color: var(--muted); font-size: 0.74rem; }
+.mb .dv { font-style: normal; font-size: 0.74rem; font-variant-numeric: tabular-nums; }
+.mb .dv.up { color: var(--good); }
+.mb .dv.down { color: var(--bad); }
+.mb-x { display: flex; justify-content: space-between; gap: 8px; font-size: 0.8rem; padding: 1px 0; text-align: left; }
+.mb-x.good b { color: var(--good); }
+.mb-x.bad b { color: var(--bad); }
+.rh-card .v small { font-size: 0.72rem; font-weight: 600; margin-left: 3px; }
+.rh-card .v small.good { color: var(--good); }
+.rh-card .v small.bad { color: var(--bad); }
+/* 길잡이 맨 위의 작은 성적표 */
+.mood-strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin: 0 0 8px; }
+.ms { padding: 4px 3px 5px; border-radius: 7px; background: var(--panel-2); text-align: center; cursor: help; }
+.ms .t { font-size: 0.64rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: clip; }
+.ms .v { font-weight: 700; font-size: 0.95rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.ms .v small { color: var(--muted); font-weight: 400; font-size: 0.62rem; }
+.ms .bar { height: 3px; margin: 2px 3px 0; border-radius: 2px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.ms .bar i { display: block; height: 100%; background: var(--good); }
+.ms.mid .bar i { background: var(--warn); }
+.ms.bad .bar i { background: var(--bad); }
+.ms.bad .v { color: var(--bad); }
+.ms.mid .v { color: var(--warn); }
+.city-effect { margin: 4px 0 2px; padding: 6px 8px; border-radius: 8px; background: var(--panel-2); font-size: 0.8rem; }
+.city-effect .row { margin: 1px 0; }

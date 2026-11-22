@@ -69,7 +69,7 @@ function newGame(mode) {
     lastReport: null, history: [],
     selectedId: null, cleanStreak: 0,
     happiness: ECON.happinessStart,
-    mood: { outage: 0 },          // 민심 계산용 기억 (최근 정전)
+    mood: { outage: 0, buzz: 0 }, // 민심 계산용 기억 (최근 정전 · 사건과 목표가 남긴 여론)
     scoreAcc: 0,                  // 지금까지 쌓은 점수
     tariff: 0, tariffSetAt: -999, // 전기요금 조정 단계(−2~+2)와 마지막으로 바꾼 달
     tech: emptyTech(), techPity: {}, techLog: [],
@@ -231,23 +231,24 @@ function runMonth() {
   state.trade.energyRev += report.money.energyRev || 0;
 
   const hc = happinessChange(state, report);
-  report.happiness = { before: state.happiness, items: hc.items, factors: hc.factors, target: hc.target, pull: hc.pull, total: hc.total };
+  report.happiness = { before: state.happiness, items: hc.items, factors: hc.factors, pillars: hc.pillars, extras: hc.extras, target: hc.target, pull: hc.pull, total: hc.total };
   state.happiness = clamp(Math.round((state.happiness + hc.total) * 10) / 10, 0, 100);
   report.happiness.after = state.happiness;
-  state.mood.target = hc.target; state.mood.factors = hc.factors;   // 화면 표시용 (지금 민심이 어디를 향하는지)
+  state.mood.target = hc.target; state.mood.factors = hc.factors; state.mood.pillars = hc.pillars; state.mood.extras = hc.extras;   // 화면 표시용 (지금 민심이 어디를 향하는지)
 
   state.lastReport = report;
   // 진행 기록 (엔딩 통계 그래프용)
   const g = report.energy.gen;
   const genTotal = g.nuclear + g.coal + g.ccgt + g.gt + g.solar + g.wind;
   const smpAvg = report.hours.reduce((s, h) => s + h.smp, 0) / report.hours.length;
-  // 민심을 깎은 항목별 합계 (엔딩 원인 분석용)
+  // 분야별로 만점에서 잃은 점수 (엔딩 원인 분석용) · 분야 안에서 깎인 낱낱(주민 불만 · 공약 불이행 등)
   const hneg = {};
-  for (const it of hc.items) if (it.delta < 0 && it.key) hneg[it.key] = (hneg[it.key] || 0) + it.delta;
-  for (const f of hc.factors) if (f.value < 0) hneg[f.key] = (hneg[f.key] || 0) + f.value;
-  // 민심 요인 기록 (엔딩의 "무엇이 민심을 올리고 깎았나")
+  for (const p of hc.pillars) { const lost = Math.round((p.score - p.max) * 10) / 10; if (lost < 0) hneg[p.key] = lost; for (const x of p.parts) if (x.value < 0) hneg[x.key] = (hneg[x.key] || 0) + x.value; }
+  for (const x of hc.extras) if (x.value < 0) hneg[x.key] = (hneg[x.key] || 0) + x.value;
+  // 분야별 점수 기록 (엔딩의 "분야별 임기 평균")
   const moodRec = {};
-  for (const f of hc.factors) { const k = f.key.split(':')[0]; moodRec[k] = Math.round(((moodRec[k] || 0) + f.value) * 10) / 10; }
+  for (const p of hc.pillars) moodRec[p.key] = p.score;
+  for (const x of hc.extras) moodRec[x.key] = x.value;
   const m = report.money;
   const tgtNow = intensityTarget(state);
   state.history.push({
@@ -268,8 +269,7 @@ function runMonth() {
   if (report.blackoutHours > 0) once('blackout', '⚡ 첫 정전 발생 (' + report.blackoutHours + '시간대)');
   const lv = rdLevel(state);
   for (const th of [20, 100, 200]) if (lv >= th) once('rd' + th, '🔬 연구소 규모 ' + th + ' 달성');
-  if (tgtNow !== null) once('intensityStart', '📏 탄소 배출 기준 도입 (' + tgtNow.toFixed(2) + ' t/MWh)');
-  if (tgtNow !== null && reportIntensity(report) > tgtNow) once('intensityOver', '📏 배출 기준 첫 초과');
+  if (tgtNow !== null && reportIntensity(report) > tgtNow && yearsElapsed(state) >= 1) once('intensityOver', '📏 탄소 기준 첫 초과 (환경 점수 0)');
   if (state.happiness < 40) once('happy40', '😟 민심 40 아래로 하락');
   if (state.money < 0) once('debt', '💸 자금이 바닥나 부채 발생');
   if (report.money.exportRev > 0) once('export', '🔌 첫 전력 수출');
@@ -379,76 +379,6 @@ function advanceMonth() {
 }
 
 // ------------------------------------------------------------
-// 자동 진행: 손댈 일이 생길 때까지 달을 저절로 넘김 (결산 창을 띄우지 않음)
-//  멈추는 때: 사건 카드 · 정전이나 주파수 사고 · 목표 결과나 새 목표 · 완공·수명 종료·연구 결과 같은 알림 · 전력 수급 경고가 새로 뜸 · 자금이 바닥남 · 민심 40 아래 · 게임 종료
-//  사람이 화면을 누르거나 아무 키나 눌러도 멈춤. 안내(튜토리얼)가 끝나기 전에는 쓸 수 없음
-//  가벼운 화제 카드(cat: 'buzz')는 석 달에 한 번쯤 나오므로, 그것 때문에 멈췄으면 답하고 창을 닫는 대로 자동 진행을 이어감 (autoResume)
-// ------------------------------------------------------------
-const AUTO_MS = 650;   // 한 달을 넘기는 간격 (밀리초)
-let autoRun = null;
-let autoResume = false;   // 가벼운 화제 카드 때문에 멈췄으면, 답하고 창을 닫을 때 자동 진행을 이어감
-function autoStopForCard() {
-  const def = state.pendingDecision ? decisionById(state.pendingDecision.id) : null;
-  autoStop('');
-  autoResume = !!(def && def.cat === 'buzz');
-}
-function autoAvailable() { return !!state && !state.finished && !(state.tutorial && !state.tutorial.done); }
-function autoButtonSync() {
-  const b = document.getElementById('auto-month'); if (!b) return;
-  b.classList.toggle('on', !!autoRun);
-  b.textContent = autoRun ? '⏸ 멈춤' : '⏩ 자동';
-  b.disabled = !autoAvailable();
-}
-function autoStop(reason) {
-  if (!autoRun) return;
-  clearTimeout(autoRun.timer);
-  const n = autoRun.months; autoRun = null; autoButtonSync();
-  if (reason) showMessage('⏸ 자동 진행 멈춤 (' + n + '개월 지남): ' + reason, 5000);
-}
-// 전력 수급 경고의 종류 (숫자는 달마다 바뀌므로 지우고 비교)
-function autoWarnSig() { return (typeof guideSupply !== 'undefined' && guideSupply) ? guideSupply.cls + ':' + guideSupply.name.replace(/[\d,.]+/g, '#') : ''; }
-function autoStart() {
-  autoResume = false;
-  if (autoRun || !autoAvailable()) return;
-  if (!document.getElementById('report').classList.contains('hidden')) advanceMonth();   // 결산 창이 열려 있으면 닫고 시작
-  if (!autoAvailable()) return;
-  autoRun = { months: 0, timer: null, low: state.happiness < 40, debt: state.money < 0 };
-  autoButtonSync();
-  autoStep();
-}
-function autoStep() {
-  if (!autoRun) return;
-  if (!autoAvailable()) return autoStop('');
-  if (state.cityDraft) return autoStop('도시 조성을 확정하거나 취소하세요');
-  if (state.pendingDecision) { renderDecision(state); return autoStopForCard(); }
-  const sigBefore = autoWarnSig();
-  const len0 = state.history.length;
-  runMonth();
-  if (state.history.length === len0) return autoStop('');   // 진행되지 않음
-  autoRun.months++;
-  // 결산에 꼭 봐야 할 것이 있으면 결산 창을 띄운 채 멈춤
-  const r = state.lastReport;
-  let why = '';
-  if (r.blackoutHours > (r.freqOnlyHours || 0)) why = '정전이 났습니다';
-  else if (r.freqHours > 0) why = '주파수 사고가 났습니다 (그 시간 수요의 ' + Math.round(ECON.freqLossRatio * 100) + '% 정전)';
-  else if (r.questNotices && r.questNotices.length) why = String(r.questNotices[0]).replace(/<[^>]+>/g, '');
-  else if (state.electionLost) why = '선거 결과';
-  if (why) return autoStop(why);
-  advanceMonth();   // 결산 창을 닫고 다음 달로
-  if (!autoRun) return;
-  if (state.pendingDecision && !state.finished) return autoStopForCard();
-  if (state.finished) return autoStop('');
-  const notes = (state.notices || []).filter((t) => !/인구 유입/.test(t));
-  if (notes.length) return autoStop(notes.slice(0, 2).join(' · '));
-  const sig = autoWarnSig();
-  if (sig && (sig.indexOf('bad:') === 0 || sig !== sigBefore)) return autoStop(guideSupply.name);
-  if (state.money < 0 && !autoRun.debt) return autoStop('자금이 바닥났습니다');
-  if (state.happiness < 40 && !autoRun.low) return autoStop('민심이 40 아래로 내려갔습니다');
-  autoRun.debt = state.money < 0; autoRun.low = state.happiness < 40;
-  autoRun.timer = setTimeout(autoStep, AUTO_MS);
-}
-
-// ------------------------------------------------------------
 // 원전 중대 사고: 극히 드묾 (원전·SMR 1기당 연 ECON.nukeAccidentPerYear). 게임 안에서는 미리 설명하지 않고, 일어나면 사건으로 알림
 //  결과: 그달 민심 급락 · 임기 끝까지 민심 하락 · 사고 원전과 둘레 설비 소실 · 둘레가 접근 금지 구역(설비·도시 건설 불가)이 되고 그 안의 주민은 떠남
 // ------------------------------------------------------------
@@ -477,7 +407,7 @@ function nuclearAccident(b) {
   if (state.cities.some((c) => c.tiles.length > 0)) state.cities = state.cities.filter((c) => c.tiles.length > 0);
   // 민심: 그달 급락 + 임기 끝까지 남는 상처 (친원전 노선이면 급락이 1.5배)
   const hit = Math.round(ECON.nukeAccidentHit * policyMods(state).accidentMult);
-  state.happiness = clamp(state.happiness - hit, 0, 100);
+  moodBump(state, -(hit));
   state.accidentMood = Math.max(state.accidentMood || 0, ECON.nukeAccidentMood);
   const accName = b.type === 'nuclear' ? '원자력 발전소' : p.short;
   state.accident = { name: accName, hit, mood: ECON.nukeAccidentMood, lost: gone.length - 1, evac: Math.round(evac), year: state.year, month: state.month };
@@ -691,7 +621,7 @@ function finish(title, text, reason) {
 // ------------------------------------------------------------
 // 랭킹 (브라우저에 저장)
 // ------------------------------------------------------------
-const RANK_KEY = 'ilpp-rankings-v3';   // v3: 점수가 "20년 민심 누적"으로 바뀌어 예전 기록(v2 이하)과 섞이지 않게 새 저장 칸을 씀
+const RANK_KEY = 'ilpp-rankings-v4';   // v4: 민심이 "다섯 분야 × 20점" 성적표로 바뀌어 점수 눈금이 달라짐 (예전 기록과 섞이지 않게 새 저장 칸). v3: 점수가 "20년 민심 누적"으로 바뀌어 예전 기록(v2 이하)과 섞이지 않게 새 저장 칸을 씀
 function loadRankings() {
   try { return JSON.parse(localStorage.getItem(RANK_KEY) || '[]'); } catch (e) { return []; }
 }
@@ -831,7 +761,7 @@ function tryBuild(type, col, row) {
   let msg = p.name + ' 건설 시작 · ' + info.months + '개월 · ' + fmt(info.cost) + '억';
   if (info.opposed) msg += ' (주민 반발: 비용·기간 증가)';
   if (info.coastal) msg += ' (해안 보너스)';
-  if (info.mountain && type === 'solar') { state.happiness = clamp(state.happiness - ECON.solarMountainBuildHit, 0, 100); }   // 벌목 반발: 지을 때 한 번
+  if (info.mountain && type === 'solar') { moodBump(state, -(ECON.solarMountainBuildHit)); }   // 벌목 반발: 지을 때 한 번
   if (info.mountain) msg += type === 'wind' ? ' (산지 보너스)' : ' (산지 · 벌목으로 탄소 배출이 생기고 민심 −' + ECON.solarMountainBuildHit + ', 이후 민심 −' + fmt(ECON.solarMountainNuisance * ECON.moodNuisanceMult, 1) + ')';
   else if (type === 'wind' && !info.coastal) msg += ' (평지 · 출력 −' + Math.round(ECON.windPlainPenalty * 100) + '%)';
   const n = nuisanceOf(state, b);
@@ -910,6 +840,13 @@ function paintDraft(col, row, mode) {
   render();
 }
 
+// 새 도시를 세우면 밖에서 들어오는 인구 (만 명): 도시 수용량의 cityNewcomers(80칸이면 30만) 또는 전국 인구의 cityNewcomerShare 가운데 큰 쪽.
+//  도시가 많아질수록 줄어듦 (cityNewcomerFadeFrom곳을 넘으면 하나당 −15%)
+function cityNewcomersNow(state, effTiles) {
+  const fade = Math.max(ECON.cityNewcomerMin, 1 - ECON.cityNewcomerFade * Math.max(0, state.cities.length - ECON.cityNewcomerFadeFrom));
+  const pop = state.cities.reduce((s, c) => s + c.pop, 0);
+  return { n: Math.max(ECON.cityNewcomers * ECON.densityLimit * effTiles, ECON.cityNewcomerShare * pop) * fade, fade };
+}
 function confirmCityDraft() {
   const d = state.cityDraft;
   if (!d) return;
@@ -927,7 +864,8 @@ function confirmCityDraft() {
   const donors = state.cities.map((c) => ({ c, excess: Math.max(0, c.pop - 0.8 * limit * cityEffTiles(c)) }));
   let totalExcess = donors.reduce((s, x) => s + x.excess, 0);
   const effNew = cityEffTiles({ tiles: d.tiles });   // 산 칸은 반 칸: 산지 도시는 받는 인구도 신규 유입도 적음
-  let newPop = Math.min(totalExcess, 0.7 * limit * effNew);
+  const nc = cityNewcomersNow(state, effNew);
+  let newPop = Math.min(totalExcess, Math.max(0, 0.8 * limit * effNew - nc.n));   // 밖에서 들어올 사람 몫을 남기고 받음
   if (newPop < 5) {
     newPop = 0;
     for (const c of state.cities) { const mv = c.pop * 0.1; c.pop -= mv; newPop += mv; }
@@ -939,8 +877,8 @@ function confirmCityDraft() {
   state.cityInvestTotal = (state.cityInvestTotal || 0) + cityCost;   // 점수의 자본 항목에 절반이 자산으로 반영
   // 새 도시는 과밀 도시의 인구를 나눠 받는 데 더해, 새 터전을 보고 밖에서 들어오는 신규 인구도 생김 (총인구 증가)
   // 도시가 많아질수록 새 도시가 밖에서 끌어오는 신규 인구는 줄어듦 → 도시를 끝없이 세워 인구(성장 점수)를 사는 것을 막음
-  const newcomerFade = Math.max(ECON.cityNewcomerMin, 1 - ECON.cityNewcomerFade * Math.max(0, state.cities.length - ECON.cityNewcomerFadeFrom));
-  const newcomers = ECON.cityNewcomers * limit * effNew * newcomerFade;
+  const newcomerFade = nc.fade;
+  const newcomers = nc.n;
   newPop += newcomers;
   state.cities.push(makeCity(d.tiles.slice(), newPop, name));
   milestone('🏙 새 도시 ' + name + ' 조성');
@@ -1093,7 +1031,6 @@ function renderAll() {
   renderRD(state);
   if (typeof renderPolicyPanel === 'function') { renderPolicyPanel(state); renderTechRdPanel(state); renderNewsPanel(state); renderRdLog(state); renderCityStats(state); }
   document.getElementById('next-month').disabled = state.finished;
-  autoButtonSync();
   if (typeof tutorialTick === 'function') tutorialTick();
 }
 
@@ -1213,10 +1150,9 @@ canvas.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 canvas.addEventListener('pointerdown', (e) => {
-  // 모바일: 카드를 눌러 고른 뒤에는 지도를 누른 곳으로 놓을 자리가 옮겨 감 (확정은 아래의 "여기에 짓기" — mobile.js)
+  // 모바일 자리 잡기(카드를 눌러 고른 뒤): 짧게 누르면 뗄 때 그 자리로 옮겨 가고, 누른 채 끌면 지도가 움직임 (확정은 아래의 "여기에 짓기" — mobile.js)
   if (drag && drag.tap) {
-    const cellT = pointToCell(e.clientX, e.clientY - (e.pointerType === 'touch' ? 44 : 0), drag.type);   // 손가락에 가리지 않게 조금 위
-    if (cellT.col !== null) { drag.col = cellT.col; drag.row = cellT.row; render(); if (typeof mobilePlaceUpdate === 'function') mobilePlaceUpdate(); }
+    pressPos = { x: e.clientX, y: e.clientY, col: state.view.col, row: state.view.row };
     return;
   }
   if (e.button === 2 || e.button === 1) {                     // 오른쪽/가운데 버튼: 지도 이동
@@ -1248,9 +1184,9 @@ document.addEventListener('pointermove', (e) => {
   if (!state) return;
 
   // 왼쪽 버튼으로 지도를 일정 거리 이상 끌면 화면 이동으로 전환
-  if (pressPos && !panStart && !drag && !draftPaint) {
+  if (pressPos && !panStart && (!drag || drag.tap) && !draftPaint) {
     const moved = Math.abs(e.clientX - pressPos.x) + Math.abs(e.clientY - pressPos.y);
-    if (moved > 6) {
+    if (moved > (e.pointerType === 'touch' ? 12 : 6)) {   // 손가락은 누르기만 해도 조금 흔들리므로 더 넉넉히
       panStart = { x: pressPos.x, y: pressPos.y, col: pressPos.col, row: pressPos.row };
       document.body.style.cursor = 'grabbing';
     }
@@ -1277,12 +1213,7 @@ document.addEventListener('pointermove', (e) => {
     return;
   }
   if (drag) {
-    if (drag.tap) {   // 모바일: 지도를 누른 채 움직일 때만 자리가 따라옴
-      if (e.target !== canvas || !(e.buttons || e.pointerType === 'touch')) return;
-      const cellT = pointToCell(e.clientX, e.clientY - (e.pointerType === 'touch' ? 44 : 0), drag.type);
-      if (cellT.col !== null && (cellT.col !== drag.col || cellT.row !== drag.row)) { drag.col = cellT.col; drag.row = cellT.row; render(); if (typeof mobilePlaceUpdate === 'function') mobilePlaceUpdate(); }
-      return;
-    }
+    if (drag.tap) return;   // 모바일 자리 잡기: 움직이는 동안에는 자리를 건드리지 않음 (끌면 위에서 지도 이동으로 처리됨)
     const cell = pointToCell(e.clientX, e.clientY, drag.type);
     drag.col = cell.col; drag.row = cell.row;
     render();
@@ -1320,7 +1251,13 @@ document.addEventListener('pointerup', (e) => {
   if (draftPaint) { draftPaint = null; return; }
 
   if (drag) {
-    if (drag.tap) { pressPos = null; return; }   // 모바일: 손을 떼도 짓지 않음 (자리만 잡고, 확정 버튼으로 지음)
+    if (drag.tap) {   // 모바일 자리 잡기: 거의 움직이지 않고 뗐으면(= 짧게 누름) 그 자리로 옮김. 짓지는 않음 (확정 버튼으로 지음)
+      if (pressPos && e.target === canvas && Math.abs(e.clientX - pressPos.x) + Math.abs(e.clientY - pressPos.y) <= 12) {
+        const cellT = pointToCell(e.clientX, e.clientY, drag.type);
+        if (cellT.col !== null && (cellT.col !== drag.col || cellT.row !== drag.row)) { drag.col = cellT.col; drag.row = cellT.row; render(); if (typeof mobilePlaceUpdate === 'function') mobilePlaceUpdate(); }
+      }
+      pressPos = null; return;
+    }
     const cell = pointToCell(e.clientX, e.clientY, drag.type);
     const type = drag.type;
     drag = null;
@@ -1401,29 +1338,31 @@ function flashTab(msg) {
 // 용어 풀이 (상단 용어 버튼)
 // ------------------------------------------------------------
 const GLOSSARY = [
-  ['국정운영 점수', '20년 동안의 민심을 쌓은 값입니다. 매달 그달의 민심만큼 쌓이고, 11년 차부터는 한 달이 ' + ECON.scoreLateWeight + '배로 쳐집니다. 전력 안정, 요금, 탄소, 경제, 기술은 따로 점수가 없고 전부 민심을 통해 반영됩니다.'],
-  ['예상 민심', '지금 나라 상태가 그대로 이어지면 민심이 다다르게 될 값입니다. 위쪽 막대의 민심 옆에 작게 적혀 있습니다. 기본 ' + ECON.moodBase + '에 전력 안정, 전기 요금, 공기, 경제, 도시, 기피 시설, 연구, 정책과 공약이 더해지거나 빠집니다. 민심은 매달 이 값 쪽으로 ' + Math.round(ECON.moodPull * 100) + '%씩 움직입니다. 요인들의 합이 +' + ECON.moodSoftFrom + '(예상 민심 ' + (ECON.moodBase + ECON.moodSoftFrom) + ')을 넘으면 넘는 부분은 절반만 반영됩니다("높아진 눈높이"). 그래서 ' + (ECON.moodBase + ECON.moodSoftFrom) + ' 위로는 모든 요인을 고르게 잘 관리해야 올라갑니다.'],
+  ['국정운영 점수', '20년 동안의 민심을 쌓은 값입니다. 매달 그달의 민심만큼 쌓이고, 11년 차부터는 한 달이 ' + ECON.scoreLateWeight + '배로 쳐집니다. 전력 공급, 요금, 환경, 도시, 연구는 따로 점수가 없고 전부 민심의 다섯 분야를 통해 반영됩니다.'],
+  ['민심의 다섯 분야', '민심(0~100)은 다섯 분야의 점수를 더한 값입니다. 분야마다 ' + ECON.moodPillarMax + '점이 만점입니다. ① 전력 공급: 정전이 없으면 만점이고, 정전이 나면 여러 달 깎입니다. ② 전기 요금: 국민이 내는 요금이 기대 요금과 같으면 10점, 쌀수록 오릅니다. ③ 환경: 전기를 만들 때 나오는 탄소가 0이면 만점, 탄소 기준 이상이면 0점입니다. ④ 도시·생활: 일자리(인구 증가) · 전력 수출 · 주거 여유(새 도시)에서 주민 불만(기피 시설 · 원전 불안 · 국토 잠식)을 뺍니다. ⑤ 미래·신뢰: 연구와, 정책 · 공약을 지키는 것입니다. 모든 분야가 만점이어야 100이라서 한두 분야만 잘해서는 높이 올라가지 않습니다.'],
+  ['예상 민심', '지금 나라 상태가 그대로 이어지면 민심이 다다르게 될 값입니다. 위쪽 막대의 민심 옆에 작게 적혀 있습니다. 다섯 분야 점수의 합에 "여론"을 더한 값이고, 민심은 매달 이 값 쪽으로 차이의 ' + Math.round(ECON.moodPull * 100) + '%만큼 움직입니다. 설비를 짓거나 요금이 바뀌면 예상 민심이 먼저 바뀌고, 민심이 두세 달에 걸쳐 따라갑니다.'],
+  ['여론', '사건 카드의 선택이나 목표의 보상 · 벌칙처럼 민심을 한 번에 올리거나 내린 일이 남긴 여운입니다. 그 자리에서 민심이 바로 움직이고, 같은 크기가 예상 민심에도 얹혔다가 매달 ' + Math.round((1 - ECON.moodBuzzDecay) * 100) + '%씩 옅어집니다.'],
+  ['주거 여유 · 새 도시', '도시·생활 분야의 점수 가운데 하나(' + ECON.moodHousingMax + '점)로, 전국 평균 인구 밀도로 매깁니다. 칸당 ' + ECON.housingComfort + '만 명 이하면 만점이고 과밀 기준인 ' + ECON.densityLimit + '만 명이면 0점입니다. 인구는 계속 늘어나므로 새 도시를 세워야 유지됩니다. 새 도시를 세우면 밖에서 사람이 들어와(전국 인구의 ' + Math.round(ECON.cityNewcomerShare * 100) + '% 또는 ' + Math.round(ECON.cityNewcomers * ECON.densityLimit * ECON.cityTiles) + '만 명 가운데 큰 쪽) 전력 수요도 그만큼 늘어납니다. 전기가 남을 때 수요를 끌어오는 방법이기도 합니다.'],
   ['재선', '10년 차가 끝날 때 선거가 있습니다. 10년을 넘기는 그 달의 민심이 ' + ECON.electionBar + ' 이상이어야 임기를 이어 가고, 못 미치면 게임이 끝납니다. 2년 전에 목표로 예고됩니다.'],
   ['전기요금 조정', '정책 칸의 손잡이로, ' + (ECON.tariffFromMonth / 12 + 1) + '년 차부터 쓸 수 있습니다. 지원을 켜면 국민이 실제로 내는 요금이 10%나 20% 내려가 요금 불만이 줄고, 그만큼이 전력 판매 수입에서 나갑니다. 할증은 반대입니다. 고칠 수 있는 것은 요금뿐이라 탄소·정전·기술 문제는 돈으로 덮을 수 없고, 전기값이 이미 싼 나라는 지원해도 얻는 게 거의 없습니다. 한 번 바꾸면 ' + ECON.tariffLockMonths + '개월 동안 못 바꿉니다.'],
   ['SMP (전기 도매가격)', '그 시간에 돌아간 발전기 중 가장 비싼 발전기의 원가에 마진을 붙인 값입니다. 전기는 이 값을 기준으로 팔리므로, 원가가 싼 발전기일수록 많이 남습니다. 국민이 내는 요금은 이 값 그대로가 아니라 아래의 "소비자 요금"입니다.'],
-  ['소비자 요금', '국민이 실제로 내는 전기값입니다. 발전소에 정산해 준 돈을 공급한 전기로 나눈 평균 단가라서, 가스만 쓰면 도매가(SMP)와 같고 원자력·석탄(정산조정계수)이나 태양광·풍력(통합 비용 공제) 비중이 클수록 도매가보다 싸집니다. 국민이 기대하는 전기값(처음 ' + ECON.moodPriceRef0 + '원, 해마다 ' + ECON.moodPriceRefDrop + '원씩 내려감)보다 비싸면 민심이 내려가고 싸면 올라갑니다.'],
+  ['소비자 요금', '국민이 실제로 내는 전기값입니다. 발전소에 정산해 준 돈을 공급한 전기로 나눈 평균 단가라서, 가스만 쓰면 도매가(SMP)와 같고 원자력·석탄(정산조정계수)이나 태양광·풍력(통합 비용 공제) 비중이 클수록 도매가보다 싸집니다. 국민이 기대하는 전기값(처음 ' + ECON.moodPriceRef0 + '원, 해마다 ' + ECON.moodPriceRefDrop + '원씩 내려감)과 같으면 전기 요금 분야가 10점이고, 1원 쌀 때마다 ' + ECON.moodPriceSlope + '점 오릅니다(50원 싸면 만점, 50원 비싸면 0점).'],
   ['정책 공약', '정책을 고르면 약속이 하나 따라옵니다 (예: 친원전이면 원자력 비중과 원자력 테크). 기한 안에 지키면 임기 끝까지 민심 +' + ECON.moodPledgeKept + ', 넘기면 −' + ECON.moodPledgeBroken + '입니다. 늦게라도 지키면 벌점은 사라집니다. 중립처럼 약속이 없는 선택도 있습니다.'],
-  ['재선 공약', '선거 1년 전(9년 차 말)에 발표하는 2기 국정 과제입니다. 분야 하나(내 에너지 정책에 맞는 것 하나와 공통 셋 중)와 수위 하나(현실적 · 과감 · 파격)를 고릅니다. 과감할수록 발표 직후 "공약 기대감"으로 민심이 올라 재선에 도움이 되지만(과감 +' + TERM2_LEVELS[1].boost + ', 파격 +' + TERM2_LEVELS[2].boost + ', 1년 뒤부터 사라짐), 목표 숫자가 훨씬 높습니다. 기한은 18년 차 말이고 1년 평균으로 판정합니다. 지키면 임기 끝까지 민심 +' + TERM2_LEVELS.map((l) => l.kept).join(' / +') + ', 못 지키면 그달 민심 −' + TERM2_LEVELS.map((l) => l.hit).join(' / −') + ', 그 뒤로도 −' + TERM2_LEVELS.map((l) => l.broken).join(' / −') + '가 남습니다(수위 순). 재선 뒤에는 국민의 눈높이도 한 단계 높아져서(요인 합 +' + ECON.moodSoftFrom2 + '부터 절반), 이 공약을 지켜야 민심 100에 닿습니다.'],
-  ['연구', '민심 요인의 하나입니다. 에너지 정책으로 고른 내 노선의 테크와 계통 테크를 2:1로 본 "연구 수준"을 국민의 기대와 비교합니다. 화력 노선은 복합발전·석탄의 평균, 재생에너지 노선은 태양광·풍력의 평균이라 두 설비를 모두 지어야 온전히 반영되고, 원자력 노선은 15단계를 10단계 눈금으로 바꿔 셉니다(9단계 = 6). 중립이면 지금 쓰는 설비들의 테크 평균입니다. 기대는 해마다 ' + ECON.moodTechPerYear + '단계씩 올라가고, 1단계 앞서면 민심 +' + ECON.moodTechSlope + ', 뒤처지면 −' + ECON.moodTechSlope + '입니다.'],
+  ['재선 공약', '선거 1년 전(9년 차 말)에 발표하는 2기 국정 과제입니다. 분야 하나(내 에너지 정책에 맞는 것 하나와 공통 셋 중)와 수위 하나(현실적 · 과감 · 파격)를 고릅니다. 과감할수록 발표 직후 "공약 기대감"으로 민심이 올라 재선에 도움이 되지만(과감 +' + TERM2_LEVELS[1].boost + ', 파격 +' + TERM2_LEVELS[2].boost + ', 1년 뒤부터 사라짐), 목표 숫자가 훨씬 높습니다. 기한은 18년 차 말이고 1년 평균으로 판정합니다. 지키면 임기 끝까지 민심 +' + TERM2_LEVELS.map((l) => l.kept).join(' / +') + ', 못 지키면 그달 민심 −' + TERM2_LEVELS.map((l) => l.hit).join(' / −') + ', 그 뒤로도 −' + TERM2_LEVELS.map((l) => l.broken).join(' / −') + '가 남습니다(수위 순). 모두 미래·신뢰 분야의 점수입니다.'],
+  ['연구', '미래·신뢰 분야의 점수(' + ECON.moodResearchMax + '점)입니다. 에너지 정책으로 고른 내 노선의 테크와 계통 테크를 2:1로 본 "연구 수준"을 국민의 기대와 비교합니다. 화력 노선은 복합발전·석탄의 평균, 재생에너지 노선은 태양광·풍력의 평균이라 두 설비를 모두 지어야 온전히 반영되고, 원자력 노선은 15단계를 10단계 눈금으로 바꿔 셉니다(9단계 = 6). 중립이면 지금 쓰는 설비들의 테크 평균입니다. 기대는 해마다 ' + ECON.moodTechPerYear + '단계씩 올라가고, 기대와 같으면 ' + ECON.moodResearchMid + '점, 1단계 앞설 때마다 +' + ECON.moodTechSlope + ', 뒤처질 때마다 −' + ECON.moodTechSlope + '입니다.'],
   ['테크트리', '여섯 가지입니다. 화력 노선은 복합발전과 석탄화력(각 10단계), 재생에너지 노선은 태양광과 풍력(각 10단계), 원자력 노선은 원자력 하나(15단계)를 올립니다. 계통 · 배터리(10단계)는 어느 노선이든 함께 씁니다.'],
   ['계절과 날씨', '전력 수요는 1월과 8월이 가장 크고 4·5·10월이 가장 작습니다(가장 큰 달이 가장 작은 달의 약 1.3배). 하루 중에는 여름은 낮 2시쯤, 그 밖의 계절은 저녁 5시쯤이 가장 큽니다. 여름은 평년보다 더울수록, 겨울은 추울수록 수요가 늘어납니다(1℃에 약 1%). 해가 떠 있는 시간은 여름 14시간, 겨울 10시간이라 겨울 저녁에는 태양광이 나오지 않습니다. 풍력은 겨울과 밤에 셉니다. 가스 발전은 추울수록 출력이 오르고 더울수록 줄어듭니다(15℃ 기준 1℃에 0.6%).'],
   ['태양광과 풍력의 조화', '태양광은 낮과 여름에, 풍력은 밤과 겨울에 많이 나옵니다. 한쪽만 지으면 남는 시간에는 버려지고 모자라는 시간에는 다른 발전기가 메워야 합니다. 둘을 섞어야 하루와 한 해가 고르게 채워집니다.'],
   ['용량 요금', '발전량을 조절할 수 있는 설비(가스·석탄·원자력)가 대기해 주는 대가로 매달 받는 돈입니다. 전기를 안 팔아도 나오지만, 최대 수요의 ' + ECON.capacityReserveCap + '배까지만 줍니다.'],
-  ['공급 예비율', '공급 능력이 최대 수요보다 얼마나 많은지입니다. 모자라면 정전이 나고, ' + Math.round((ECON.inducedReserve - 1) * 100) + '%를 넘으면 사람이 몰려와 수요가 더 빨리 늘어납니다.'],
+  ['공급 예비율', '공급 능력이 최대 수요보다 얼마나 많은지입니다. 모자라면 정전이 나고, ' + Math.round((ECON.inducedReserve - 1) * 100) + '%를 넘으면 사람이 몰려와 수요가 더 빨리 늘어납니다. 다만 조절 설비(복합발전·석탄·원전)를 한 해 최대 수요의 ' + Math.round(ECON.reserveFree * 100) + '% 넘게 지으면, 남아도는 설비의 유지비가 전기요금에 얹힙니다(넘는 10%p마다 +' + Math.round(ECON.reserveWonPer / 10) + '원 → 전기 요금 점수 −' + (ECON.reserveWonPer / 10 * ECON.moodPriceSlope) + '). 전기가 남으면 새 도시를 세워 수요를 끌어오거나 낡은 설비를 철거하세요.'],
   ['기저 전원 · 정산조정계수', '원자력·SMR·석탄처럼 싸게 꾸준히 도는 발전기입니다. 너무 많이 남지 않도록 SMP의 ' + Math.round(ECON.baseloadSettle * 100) + '%만 받습니다 (전력시장 정책에 따라 달라짐). 그만큼 소비자 요금이 싸집니다.'],
-  ['램프 (출력 조절 속도)', '한 시간에 출력을 바꿀 수 있는 폭입니다. 복합발전 70%, 석탄 20%(석탄 테크 2단계부터 40%). 원자력은 출력을 조절할 수 없어 항상 100%로 돕니다. 밤에 남는 전기는 배터리에 담거나 수출해야 합니다.'],
+  ['램프 (출력 조절 속도)', '한 시간에 출력을 바꿀 수 있는 폭입니다. 복합발전은 용량의 ' + Math.round(PLANTS.ccgt.ramp * 100) + '%라 수요를 자유롭게 따라가고, 석탄은 ' + Math.round(PLANTS.coal.ramp * 100) + '%(석탄 테크 2단계부터 ' + Math.round(PLANTS.coal.ramp * 200) + '%)에 최소 출력 ' + Math.round(PLANTS.coal.minLoad * 100) + '%라 느립니다. 원자력은 출력을 조절할 수 없어 항상 100%로 돌고, 태양광·풍력은 날씨대로 나옵니다. 그래서 석탄·원자력은 바닥 수요를 맡기고, 오르내리는 몫은 복합발전과 배터리가 맡아야 합니다. 밤에 남는 전기는 배터리에 담거나 수출해야 합니다.'],
   ['출력 제한 · 과잉 발전', '전기가 수요보다 많이 남아 버리는 상황입니다. 그 시간의 SMP가 바닥값(' + ECON.smpFloor + '원)으로 떨어집니다. 연계선으로 수출하면 줄일 수 있습니다. 원전·석탄처럼 줄일 수 없는 전기가 배터리와 수출로도 못 받아낼 만큼 남으면(과잉 발전) 정전은 아니지만 처리 비용이 전기요금에 얹힙니다. 남은 양이 그달 수요의 10%면 요금이 kWh당 ' + Math.round(ECON.overPriceWon * 0.1) + '원 오릅니다.'],
   ['초과 이윤 환수', '한 달 이익이 투자 자본(지은 설비 값)의 연 ' + Math.round(ECON.clawRoi * 100) + '% 수준을 넘으면, 넘는 부분의 절반 이상을 정부가 가져갑니다. 비율은 전력시장 정책에 따라 달라집니다.'],
   ['탄소세', '탄소 1톤을 배출할 때마다 내는 돈입니다. ' + fmt(ECON.carbonTaxStart) + '원에서 시작해 매년 ' + Math.round(ECON.carbonTaxGrowth * 100) + '%씩 오릅니다 (최대 ' + fmt(ECON.carbonTaxMax) + '원).'],
-  ['탄소 원단위 (t/MWh)', '전기 1MWh를 만들 때 나온 탄소량입니다. 국민이 기대하는 수준(처음 ' + ECON.cleanExpectStart.toFixed(2) + ', 해마다 내려가 ' + Math.round((ECON.cleanExpectStart - ECON.cleanExpectMin) / ECON.cleanExpectDrop) + '년 차부터 ' + ECON.cleanExpectMin.toFixed(2) + ')보다 낮으면 민심이 오르고 높으면 내려갑니다. 복합발전(' + PLANTS.ccgt.co2.toFixed(2) + ')은 처음부터 이보다 높고 테크로 줄여도 기대가 함께 내려가서, 화력만으로는 임기 내내 조금씩 깎입니다. 무탄소 전원을 섞어야 플러스가 됩니다. ' + ECON.intensityStartYear + '년 차부터는 법정 기준도 생겨 ' + ECON.intensityStart.toFixed(2) + '에서 ' + ECON.intensityEndYear + '년 차 ' + ECON.intensityEnd.toFixed(2) + '까지 내려가고, 이 기준을 넘으면 더 크게 내려갑니다.'],
+  ['탄소 원단위 (t/MWh)', '전기 1MWh를 만들 때 나온 탄소량입니다. 환경 분야의 점수는 이 값이 0이면 만점(' + ECON.moodPillarMax + '점), "탄소 기준" 이상이면 0점입니다. 기준은 처음 ' + ECON.carbonRefStart.toFixed(2) + '에서 해마다 내려가 ' + ECON.intensityEndYear + '년 차에 ' + ECON.carbonRefEnd.toFixed(2) + '이 됩니다. 복합발전(' + PLANTS.ccgt.co2.toFixed(2) + ')은 초반에만 조금 받고, 석탄(' + PLANTS.coal.co2.toFixed(2) + ')은 테크를 끝까지 올려도 받지 못합니다. 태양광·풍력·원자력 같은 무탄소 전원을 섞어야 오릅니다.'],
   ['주파수 안정도', '전력망의 주파수가 흔들리지 않고 버티는 정도입니다. 태양광·풍력·배터리는 돌아가는 터빈이 없어(관성 없음) 주파수를 잡아 주지 못합니다. 그래서 한 시간에 쓰는 전기 중 이런 전기가 차지할 수 있는 비중에 한도(처음 ' + Math.round(ECON.inertiaLimit * 100) + '%)가 있습니다. 넘는 태양광·풍력은 버려지고 배터리는 그만큼 내보내지 못해, 나머지는 복합발전·석탄·원자력처럼 터빈이 도는 발전기가 채워야 합니다. 계통 테크로 한도가 올라갑니다. "전망" 탭의 주파수 안정도 점수는 이 한도와 공급 여유, 밤의 과잉 발전을 함께 본 값입니다.'],
-  ['가스 의존', '민심 요인의 하나입니다. 가스 발전(복합발전)이 전체 발전량의 ' + Math.round(ECON.moodGasFree * 100) + '%를 넘으면, 가스가 귀한 때 민심이 깎입니다. 겨울(12~2월)에는 난방에 쓸 가스를 발전이 끌어다 써서 최대 −' + ECON.moodGasWinter + ', 가스값이 평소의 ' + ECON.moodGasSpikeFrom + '배를 넘으면 넘는 만큼 최대 −' + ECON.moodGasSpikeMax + '입니다. 비중이 ' + Math.round(ECON.moodGasFull * 100) + '% 이상이면 온전히 받습니다. 임기 첫 해에는 없고, 그 뒤 ' + ECON.moodGasRampYears + '년에 걸쳐 서서히 커집니다. 석탄·원자력·태양광·풍력을 섞으면 줄어듭니다.'],
-  ['전력 수출', '국제 연계선이 있으면 남는 전기를 이웃 나라에 팝니다. 돈이 들어오고, 수출량이 그달 수요의 1%일 때마다 민심이 +' + ECON.moodExportPer + ' 오릅니다(최대 +' + ECON.moodExportMax + '). 팔 수 있는 것은 남는 전기뿐입니다. 복합발전·석탄은 필요한 만큼만 돌기 때문에 화력만으로는 수출이 생기지 않고, 원전이나 태양광·풍력을 넉넉히 지어야 합니다.'],
+  ['전력 수출', '국제 연계선이 있으면 남는 전기를 이웃 나라에 팝니다. 돈이 들어오고, 수출량이 그달 수요의 1%일 때마다 도시·생활 분야가 +' + ECON.moodExportPer + '점 오릅니다(최대 +' + ECON.moodExportMax + '). 팔 수 있는 것은 남는 전기뿐입니다. 복합발전·석탄은 필요한 만큼만 돌기 때문에 화력만으로는 수출이 생기지 않고, 원전이나 태양광·풍력을 넉넉히 지어야 합니다.'],
   ['배터리', '남는 전기를 담았다가 모자랄 때 내보내는 설비입니다. 낮에 남는 태양광을 저녁에 쓰게 해 주고, 밤에 남는 원전·석탄 전기를 아침에 쓰게 해 줍니다. 발전 설비 바로 옆에 붙여 지어야 합니다. 관성이 없어서 주파수 안정도 한도 안에서만 내보냅니다.'],
   ['REC (재생에너지 보조금)', '태양광·풍력이 만든 전기에 얹어 주는 보조금입니다. kWh당 ' + ECON.rec + '원에서 시작해 ' + ECON.recYears + '년에 걸쳐 0이 됩니다.'],
   ['건설 물가', '경제(전력 수요)가 시작의 ' + ECON.costIndexFrom + '배를 넘어 커질수록 땅값·인건비·자재비가 올라 새 설비 건설비와 고정 유지비가 함께 오릅니다. 지도 아래 칸에 지금 배수가 표시됩니다. 건설비를 깎는 테크는 후반으로 갈수록 값어치가 커집니다.'],
@@ -1443,7 +1382,6 @@ const GLOSSARY = [
 // ------------------------------------------------------------
 document.addEventListener('keydown', (e) => {
   if (!state) return;
-  if (autoRun) { autoStop(''); e.preventDefault(); return; }   // 자동 진행 중에는 아무 키나 누르면 멈춤
   if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT')) return;
   const startOpen = !document.getElementById('start').classList.contains('hidden');
   const overOpen  = !document.getElementById('gameover').classList.contains('hidden');
@@ -1461,7 +1399,6 @@ document.addEventListener('keydown', (e) => {
     else if (!drag && !state.finished) runMonth();
     return;
   }
-  if (key === 'f' || key === 'F') { autoStart(); return; }   // 자동 진행
   if (key === '1') showTab('map');
   else if (key === '2' || key === '3') showTab('tech');   // 연구 칸 열기
   else if (key === 'Escape') {
@@ -1484,9 +1421,6 @@ document.addEventListener('keydown', (e) => {
 // 버튼들
 // ------------------------------------------------------------
 document.getElementById('next-month').addEventListener('click', runMonth);
-document.getElementById('auto-month').addEventListener('click', () => { if (autoRun) autoStop(''); else autoStart(); });
-// 자동 진행 중에 화면 어디든 누르면 멈춤 (설비를 놓거나 창을 여는 사이에 달이 넘어가지 않게)
-document.addEventListener('pointerdown', (e) => { if (autoRun && !(e.target && e.target.closest && e.target.closest('#auto-month'))) autoStop(''); }, true);
 document.getElementById('tutorial-help').addEventListener('click', () => { if (!state || state.finished) return; if (!state.tutorial || state.tutorial.done || confirm('안내를 처음부터 다시 볼까요?')) tutorialRestart(); });
 document.getElementById('report-close').addEventListener('click', advanceMonth);
 
@@ -1584,7 +1518,6 @@ document.getElementById('decision-choices').addEventListener('click', (e) => {
 document.getElementById('decision-close').addEventListener('click', () => {
   document.getElementById('decision').classList.add('hidden');
   if (state && state.pendingDecision) { renderDecision(state); return; }   // 아직 답하지 않았으면 다시 띄움
-  if (autoResume) autoStart();   // 자동 진행 중에 뜬 화제 카드였으면 이어서 진행
 });
 
 // ------------------------------------------------------------

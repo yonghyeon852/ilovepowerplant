@@ -16,7 +16,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="style.css?v=s11220133t">
+  <link rel="stylesheet" href="style.css?v=s11221255f">
 </head>
 <body>
 
@@ -51,7 +51,6 @@
     <div class="date-box">
       <span id="date-value">2030년 1월</span>
       <button id="next-month" class="primary" title="단축키: Space / Enter">이번 달 진행 ▶ <small>Space</small></button>
-      <button id="auto-month" class="ghost" title="자동 진행 (단축키 F): 사건·경고·완공처럼 손댈 일이 생길 때까지 달을 저절로 넘깁니다. 가벼운 화제 카드는 답하면 이어서 진행합니다. 다시 누르거나 아무 키나 누르면 멈춥니다.">⏩ 자동</button>
       <details id="menu" class="menu">
         <summary title="메뉴: 요약 복사 · 용어 풀이 · 안내 다시 보기 · 사퇴 · 새 게임">☰ 메뉴</summary>
         <div class="menu-list">
@@ -87,13 +86,14 @@
         <div id="city-list"></div>
         <div id="city-found">
           <h3>새 도시 만들기</h3>
-          <p class="tip">도시가 붐비면 새 도시를 세워 인구를 나눕니다. 새 도시 1곳마다 <b>민심 +1</b>(최대 +4)이고, 그만큼 전력 수요도 늘어납니다.</p>
+          <p class="tip">인구가 늘면 도시가 빽빽해져 <b>주거 여유</b> 점수가 떨어지고 사람도 덜 들어옵니다. 새 도시를 세우면 여유가 생기고, 밖에서 사람이 들어와 <b>전력 수요</b>도 늘어납니다.</p>
           <details class="more"><summary>자세히</summary>
             <p class="tip">"자동으로 자리 잡기"를 누르면 <b id="city-need">40</b>칸을 알아서 칠해 주고, 직접 칠할 수도 있습니다. 칸은 서로 이어져야 하고 강·바다·설비·다른 도시와 겹칠 수 없습니다. 새 도시에는 밖에서 신규 인구도 들어오는데, 도시가 6곳을 넘으면 그 수가 점점 줄어듭니다.</p>
           </details>
           <label class="field"><span>도시 이름</span><input id="city-name" type="text" maxlength="10" placeholder="예: 새빛시"></label>
           <div class="row"><span>칠한 칸</span><b><span id="city-count">0</span> / <span id="city-need2">40</span></b></div>
           <div class="row"><span>조성 비용</span><b id="city-cost">1,000억</b></div>
+          <div id="city-effect" class="city-effect"></div>
           <div class="actions">
             <button id="city-auto" class="primary small">자동으로 자리 잡기</button>
             <button id="city-start" class="small">직접 칠하기</button>
@@ -229,7 +229,7 @@
       <button data-msec="news"><i>📰</i><span>소식</span></button>
     </nav>
     <div id="mplace">
-      <div class="mp-text"><b class="mp-name"></b><span class="mp-info"></span><small>지도를 눌러 자리를 옮기세요 · 두 손가락으로 지도 이동·확대</small></div>
+      <div class="mp-text"><b class="mp-name"></b><span class="mp-info"></span><small>지도를 누르면 그 자리로 · 끌면 지도 이동</small></div>
       <button id="mplace-cancel" class="ghost">취소</button>
       <button id="mplace-ok" class="primary">여기에 짓기</button>
     </div>
@@ -286,11 +286,11 @@
         <summary>게임 규칙 한눈에 보기</summary>
         <p>
           · 매달 그달의 민심만큼 국정운영 점수가 쌓입니다(11년 차부터 2배). 10년 차에는 재선 선거가 있고, 그 1년 전에 <b>재선 공약</b>을 발표합니다. 과감한 약속일수록 선거에는 도움이 되지만 지키기 어렵고, 못 지키면 크게 깎입니다.<br>
-          · 민심이 0이 되면 탄핵, 빚이 한도를 넘으면 국가 부도로 끝납니다.<br>
+          · 민심은 <b>다섯 분야</b>(전력 공급 · 전기 요금 · 환경 · 도시·생활 · 미래·신뢰, 각 20점)의 합입니다. 민심이 10 이하로 떨어지면 탄핵, 빚이 한도를 넘으면 국가 부도로 끝납니다.<br>
           · 설비를 지어 도시에 전기를 팝니다. 수요를 못 채우면 정전, 탄소를 배출하면 탄소세를 냅니다.<br>
           · 1년 차에 고르는 <b>에너지 정책</b>(친원전 · 화력 중심 · 재생에너지 중심 · 중립)과 그 <b>공약</b>에 맞춰 설비와 테크를 키우세요.<br>
-          · 정책은 <b>중점</b>을 정할 뿐입니다. 어느 정책이든 설비를 <b>섞어 지어야</b> 합니다. 화력은 쉽지만 탄소·가스 부담으로 고점이 낮고, 높은 점수는 재생에너지·원자력·전력 수출을 잘 관리해야 나옵니다.<br>
-          · 도시가 과밀해지면 "도시" 탭에서 새 도시를 세워 인구를 나누세요.
+          · 정책은 <b>중점</b>을 정할 뿐입니다. 어느 정책이든 설비를 <b>섞어 지어야</b> 합니다. 화력은 쉽지만 환경 점수를 거의 못 받아 고점이 낮고, 높은 점수는 재생에너지·원자력·전력 수출을 잘 관리해야 나옵니다.<br>
+          · 인구가 늘어 도시가 빽빽해지면 "도시" 탭에서 새 도시를 세우세요. 사람이 더 들어와 전력 수요도 늘어납니다. 설비를 수요보다 너무 많이 지으면 남는 설비의 유지비가 전기요금에 얹힙니다.
         </p>
       </details>
     </div>
@@ -365,21 +365,20 @@
     </div>
   </div>
 
-  <script src="map.js?v=s11220133t"></script>
-  <script src="atlas.js?v=s11220133t"></script>
-  <script src="facilities.js?v=s11220133t"></script>
-  <script src="plants.js?v=s11220133t"></script>
-  <script src="tech.js?v=s11220133t"></script>
-  <script src="events.js?v=s11220133t"></script>
-  <script src="events2.js?v=s11220133t"></script>
-  <script src="events3.js?v=s11220133t"></script>
-  <script src="events4.js?v=s11220133t"></script>
-  <script src="tutorial.js?v=s11220133t"></script>
-  <script src="sim.js?v=s11220133t"></script>
-  <script src="ui.js?v=s11220133t"></script>
-  <script src="rankings_seed.js?v=s11220133t"></script>
-  <script src="rankdetail.js?v=s11220133t"></script>
-  <script src="main.js?v=s11220133t"></script>
-  <script src="mobile.js?v=s11220133t"></script>
+  <script src="map.js?v=s11221255f"></script>
+  <script src="atlas.js?v=s11221255f"></script>
+  <script src="facilities.js?v=s11221255f"></script>
+  <script src="plants.js?v=s11221255f"></script>
+  <script src="tech.js?v=s11221255f"></script>
+  <script src="events.js?v=s11221255f"></script>
+  <script src="events2.js?v=s11221255f"></script>
+  <script src="events4.js?v=s11221255f"></script>
+  <script src="tutorial.js?v=s11221255f"></script>
+  <script src="sim.js?v=s11221255f"></script>
+  <script src="ui.js?v=s11221255f"></script>
+  <script src="rankings_seed.js?v=s11221255f"></script>
+  <script src="rankdetail.js?v=s11221255f"></script>
+  <script src="main.js?v=s11221255f"></script>
+  <script src="mobile.js?v=s11221255f"></script>
 </body>
 </html>

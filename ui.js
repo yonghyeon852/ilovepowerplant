@@ -285,16 +285,16 @@ function renderTopbar(state) {
 
   const hp = state.happiness;
   document.getElementById('happy-value').textContent = fmt(hp);
-  document.getElementById('happy-face').textContent = hp >= 70 ? '😊' : hp >= 45 ? '🙂' : hp >= ECON.happinessGameOver + 10 ? '😟' : '😡';
-  document.querySelector('.happy').classList.toggle('low', hp < 45);
+  document.getElementById('happy-face').textContent = hp >= 65 ? '😊' : hp >= 42 ? '🙂' : hp >= ECON.happinessGameOver + 10 ? '😟' : '😡';
+  document.querySelector('.happy').classList.toggle('low', hp < 40);
   // 예상 민심: 민심이 지금 어디를 향해 움직이는지
   const tgEl = document.getElementById('happy-target');
   if (tgEl) {
     const tg = state.mood && state.mood.target !== undefined ? state.mood.target : null;
     if (tg === null) { tgEl.textContent = ''; tgEl.className = 'happy-target'; }
     else { const dd = tg - hp; tgEl.textContent = (Math.abs(dd) < 1 ? '→ ' : dd > 0 ? '▲ ' : '▼ ') + fmt(tg); tgEl.className = 'happy-target ' + (Math.abs(dd) < 1 ? '' : dd > 0 ? 'up' : 'down'); }
-    document.querySelector('.happy').title = '민심 (0이 되면 탄핵). 옆의 작은 숫자는 예상 민심입니다. 지금 상태가 이어지면 민심은 매달 그 값 쪽으로 조금씩 움직입니다.' +
-      (state.mood && state.mood.factors ? '\n기본 ' + ECON.moodBase + state.mood.factors.map((f) => '\n' + (f.value > 0 ? '+' : '') + f.value + '  ' + f.label).join('') : '');
+    document.querySelector('.happy').title = '민심 (' + ECON.happinessGameOver + ' 이하가 되면 탄핵). 옆의 작은 숫자는 예상 민심입니다. 다섯 분야(각 ' + ECON.moodPillarMax + '점)의 합이고, 민심은 매달 그 값 쪽으로 차이의 ' + Math.round(ECON.moodPull * 100) + '%만큼 움직입니다.' +
+      (state.mood && state.mood.pillars ? state.mood.pillars.map((p) => '\n' + p.name + '  ' + p.score + ' / ' + p.max).join('') + (state.mood.extras || []).map((x) => '\n' + x.label + '  ' + (x.value > 0 ? '+' : '') + x.value).join('') : '');
   }
 
   const peak = Math.max.apply(null, state.demandCurve);
@@ -369,6 +369,10 @@ function renderForecast(state) {
 
   // ---------- 계산 ----------
   const ratio = supplyDemandRatio(state), ind = inducedGrowth(state);
+  const rsvYear = reserveYear(state), rsvWon = reserveSurcharge(state);   // 설비 여유(한 해 최대 수요 대비)와 그 때문에 요금에 얹히는 부담
+  // 미리 돌려 보기: 석탄처럼 출력을 천천히 바꾸는 설비 때문에 "설비는 충분한데 제때 못 올려" 모자라는 시간이 있는지
+  let rampShortH = 0, rampShortMW = 0;
+  try { const dry = simulateMonth(state); for (const hh of dry.hours) if (hh.rampShort > 0.5) { rampShortH++; rampShortMW = Math.max(rampShortMW, hh.rampShort); } } catch (e) { /* 전망만 못 보여 줌 */ }
   const baseG = baseGrowthNow(state);
   const tgt = intensityTarget(state);
   const lastInten = state.lastReport ? reportIntensity(state.lastReport) : null;
@@ -415,22 +419,25 @@ function renderForecast(state) {
   const gridCls = gs >= 80 ? 'good' : gs >= 60 ? 'warn' : 'bad';
 
   // ---------- 핵심 3칸: 공급 · 탄소 · 계통 ----------
-  const supplyCls = worst > 0 ? 'bad' : minMargin < 0.05 ? 'warn' : ratio > ECON.inducedReserve ? 'warn' : 'good';
+  const supplyCls = worst > 0 || rampShortH > 0 ? 'bad' : minMargin < 0.05 ? 'warn' : rsvWon >= 1 ? 'warn' : 'good';
   // 예비력 = 공급 능력이 최대 수요보다 얼마나 많은가 (위의 큰 숫자 두 개로 계산). 가장 빠듯한 시간의 여유가 5% 아래면 따로 경고
   const rsvPct = peak > 0 ? (firm / peak - 1) * 100 : 0;
-  const supplyBadge = worst > 0 ? tightHour + '시에 ' + fmt(worst) + ' MW 부족' : minMargin < 0.05 ? tightHour + '시 공급 예비율 ' + fmt(minMargin * 100) + '% · 빠듯함' : rsvPct < 0 ? '재생에너지로 수요 보완' : '공급 예비율 ' + fmt(rsvPct) + '%';
-  const carbonCls = tgt === null ? 'muted' : overInten ? 'bad' : (lastInten !== null && lastInten > tgt * 0.9) ? 'warn' : 'good';
-  const carbonBadge = tgt === null ? '배출 기준은 ' + fmt(ECON.intensityStartYear - yearsElapsed(state), 1) + '년 뒤 도입' : overInten ? '기준 초과' : '기준 충족';
+  const supplyBadge = worst > 0 ? tightHour + '시에 ' + fmt(worst) + ' MW 부족' : rampShortH > 0 ? '출력을 제때 못 올림 · ' + rampShortH + '시간 부족' : minMargin < 0.05 ? tightHour + '시 공급 예비율 ' + fmt(minMargin * 100) + '% · 빠듯함' : rsvWon >= 1 ? '설비 과잉 · 요금 +' + fmt(rsvWon) + '원' : rsvPct < 0 ? '재생에너지로 수요 보완' : '공급 예비율 ' + fmt(rsvPct) + '%';
+  const envNow = lastInten !== null ? clamp(ECON.moodPillarMax * (1 - lastInten / tgt), 0, ECON.moodPillarMax) : null;   // 환경 분야 점수
+  const carbonCls = lastInten === null ? 'muted' : overInten ? 'bad' : envNow < ECON.moodPillarMax * 0.45 ? 'warn' : 'good';
+  const carbonBadge = lastInten === null ? '0이면 만점 · 기준 이상이면 0점' : overInten ? '기준 초과 · 환경 0점' : '환경 ' + fmt(envNow, 1) + ' / ' + ECON.moodPillarMax + '점';
   let html = '<div class="kpi-row">' +
     '<div class="kpi ' + supplyCls + '"><div class="k">공급 / 수요 (MW)</div><div class="v">' + fmt(Math.round(firm)) + '<small> / ' + fmt(peak) + '</small></div><div class="b">' + supplyBadge + '</div></div>' +
     '<div class="kpi ' + carbonCls + '"><div class="k">탄소 집약도 (t/MWh)</div><div class="v">' + (lastInten !== null ? lastInten.toFixed(2) : '-') + '<small>' + (tgt !== null ? ' / 기준 ' + tgt.toFixed(2) : '') + '</small></div><div class="b">' + carbonBadge + '</div></div>' +
     '<div class="kpi ' + gridCls + '"><div class="k">주파수 안정도</div><div class="v">' + gs + '<small> / 100 · ' + gsLevel + '</small></div><div class="bar"><i style="width:' + gs + '%"></i></div><div class="b">' + (gsReasons.length ? gsReasons[0] : '문제 없음') + '</div></div>' +
     '</div>';
-  html += '<div class="wx"><span class="wx-main">' + w.seasonName + ' · ' + w.sky + ' · ' + w.wind + ' · ' + temp + '℃</span>' + weatherEffectChips(w, ev).map((c) => '<span class="chip">' + c + '</span>').join('') + '<span class="chip">인구 월 +' + fmt(Math.min(ECON.growthCap * Math.max(0.4, 1 - ECON.landSaturationPerCity * Math.max(0, state.cities.length - ECON.landSaturationFrom)), baseG + Math.max(0, ind)) * 100, 1) + '%</span></div>';
+  html += '<div class="wx"><span class="wx-main">' + w.seasonName + ' · ' + w.sky + ' · ' + w.wind + ' · ' + temp + '℃</span>' + weatherEffectChips(w, ev).map((c) => '<span class="chip">' + c + '</span>').join('') + '<span class="chip" title="도시가 빽빽해지면 유입이 줄어듭니다 (지금 평소의 ' + fmt(housingGrowthMult(state) * 100) + '%). 새 도시를 세우면 다시 늘어납니다.">인구 월 +' + fmt(Math.max(0, monthlyGrowth(state)) * 100, 1) + '%</span></div>';
   if (state.event) html += '<div class="alert warn">⚠ <b>' + state.event.name + '</b> ' + state.event.desc + '</div>';
 
   // ---------- 경고 (해당될 때만) ----------
   const alerts = [];
+  if (rampShortH > 0) alerts.push(['bad', '설비는 충분한데 출력을 제때 못 올려 ' + rampShortH + '시간 부족 (최대 ' + fmt(rampShortMW) + ' MW) · 석탄은 한 시간에 용량의 ' + fmt(techMods(state).coalRamp * 100) + '%만 바꿉니다 → 복합발전이나 배터리를 섞으세요']);
+  if (rsvWon >= 1) alerts.push(['warn', '설비가 남아돎: 조절 설비가 한 해 최대 수요의 ' + fmt(rsvYear * 100) + '% (알맞은 범위 ' + fmt(ECON.inducedReserve * 100) + '~' + fmt(ECON.reserveFree * 100) + '%) · 남는 설비의 유지비로 전기요금 +' + fmt(rsvWon) + '원 → 새 도시로 수요를 끌어오거나 낡은 설비를 철거']);
   if (overRisk) alerts.push(['warn', '밤에 전기가 ' + fmt(overEst) + ' MW 남음 · 전기요금이 오름 (원전·석탄은 출력을 못 줄임 → 배터리·수출·조절 전원과 섞기)']);
   else if (mustRun > minDemand) alerts.push(['warn', '야간 과잉 발전 ' + fmt(mustRun - minDemand) + ' MW (배터리·수출이 받아 냄)']);
   if (retired) alerts.push(['bad', '수명 종료로 정지된 설비 ' + retired + '기 · 철거 필요']);
@@ -446,9 +453,9 @@ function renderForecast(state) {
   d += '<div class="row"><span>조절 가능 설비 (손실·기온 반영)</span><b>' + fmt(dispatch) + ' MW</b></div>';
   d += '<div class="row"><span>재생에너지 설비 · 관성 없는 전기 한도</span><b>' + fmt(caps.solar + caps.wind) + ' MW · ' + fmt(limit * 100) + '%</b></div>';
   if (caps.ess > 0) d += '<div class="row"><span>배터리 (출력 / 저장량)</span><b>' + fmt(caps.ess) + ' MW / ' + fmt(caps.essEnergy) + ' MWh</b></div>';
-  d += '<div class="row"><span>인구 증가율: 기본 월 ' + fmt(baseG * 100, 2) + '%' + (ind > 0 ? ' + 전기가 넉넉해서 월 ' + fmt(ind * 100, 1) + '% 더 유입' : '') + '</span><span class="muted">공급 예비율이 20%를 넘으면 그만큼 사람이 더 들어와 수요가 늘어납니다</span></div>';
+  d += '<div class="row"><span>설비 여유 (조절 설비 ÷ 한 해 최대 수요)</span><b class="' + (rsvWon >= 1 ? 'warn' : rsvYear < 1.05 ? 'bad' : '') + '">' + fmt(rsvYear * 100) + '%' + (rsvWon >= 1 ? ' · 요금 +' + fmt(rsvWon) + '원' : '') + '</b></div>';
+  d += '<div class="row"><span>인구 증가율: 기본 월 ' + fmt(baseG * 100, 2) + '%' + (ind > 0 ? ' + 전기가 넉넉해서 월 ' + fmt(ind * 100, 1) + '% 더 유입' : '') + (housingGrowthMult(state) < 0.99 ? ' · 도시가 빽빽해서 ×' + fmt(housingGrowthMult(state), 2) : '') + '</span><span class="muted">여유가 ' + fmt((ECON.inducedReserve - 1) * 100) + '%를 넘으면 사람이 더 들어오고, ' + fmt((ECON.reserveFree - 1) * 100) + '%를 넘으면 남는 설비 유지비가 요금에 얹힙니다</span></div>';
   d += '<div class="row"><span>가스 연료비 지수 · 업계 표준 원가 지수</span><b>' + fmt(state.gasPrice * (ev.gasMult || 1) * 100) + ' · ' + fmt(refCostFactor(state) * 100) + '</b></div>';
-  if (tgt === null) d += '<div class="row muted"><span>탄소 배출 기준 도입</span><b>' + fmt(ECON.intensityStartYear - yearsElapsed(state), 1) + '년 뒤 (시작 ' + ECON.intensityStart + ' t/MWh)</b></div>';
   if (caps.link > 0) {
     const nd = neighborDemandCurve(state);
     const appPeak = Math.max(...nd.map((v, h) => neighborAppetite(state, h)));
@@ -484,7 +491,11 @@ function renderForecast(state) {
   const bm = (t) => PLANTS[t].buildMonths;
   let diag = '', diagCls = 'good';
   guideSupply = null;
-  if (deficitHours.length) {
+  if (!deficitHours.length && rampShortH > 0) {
+    guideSupply = { cls: 'bad', name: '출력을 제때 못 올림 ' + rampShortH + '시간', tip: '복합발전·배터리 섞기' };
+    diagCls = 'bad';
+    diag = '<b>설비는 충분하지만 ' + rampShortH + '시간 동안 최대 ' + fmt(rampShortMW) + ' MW가 모자랍니다.</b> 수요가 빨리 오르는 시간에 석탄이 출력을 따라 올리지 못합니다(한 시간에 용량의 ' + fmt(techMods(state).coalRamp * 100) + '%). 출력을 자유롭게 바꾸는 <b>복합발전</b>(' + bm('ccgt') + '개월)이나 배터리를 섞으세요.';
+  } else if (deficitHours.length) {
     guideSupply = { cls: 'bad', name: '전력 부족 ' + fmt(worst) + ' MW', tip: hourRange(deficitHours) + ' · 지금 착공' };
     const day = deficitHours.filter((h) => h >= 9 && h <= 16).length, night = deficitHours.length - day;
     diagCls = 'bad';
@@ -522,10 +533,9 @@ function renderForecast(state) {
 // 길잡이: 내 노선 · 대표 공약 · 지금 신경 쓸 것(최대 3개)만. 자세한 숫자는 전망·정책 탭에
 // ------------------------------------------------------------
 const GUIDE_TIP = {
-  price: '싼 전원 늘리기 · 요금 지원', clean: '무탄소 전원 섞기 · 탄소 감축 테크', reliab: '조절 전원을 넉넉히',
-  economy: '전기를 넉넉히 두면 사람이 들어옴', tech: '내 노선 테크를 고르게 연구', crowd: '새 도시 세우기',
-  nuisance: '기피 시설을 도시에서 멀리', nukes: '원전 수 줄이기', land: '테크로 출력 키우기 · 풍력은 바다로',
-  policy: '고른 노선의 대가', pledge: '늦게라도 지키면 사라짐', accident: '임기 끝까지 남음', gas: '가스 발전 비중 낮추기 · 석탄·원자력·재생 섞기',
+  power: '조절 전원을 넉넉히 (정전은 여러 달 남음)', price: '싼 전원 늘리기 · 요금 지원 · 남는 설비 줄이기', env: '태양광·풍력·원전 비중 늘리기',
+  city: '새 도시 · 수출 · 기피 시설은 도시에서 멀리', future: '내 노선 테크 연구 · 공약 지키기',
+  housing: '새 도시 세우기 (사람도 더 들어옴)', nuisance: '기피 시설을 도시에서 멀리', nukes: '안전 테크 · 대형 원전 위주로', land: '테크로 출력 키우기 · 풍력은 바다로', pledge: '늦게라도 지키면 사라짐',
 };
 let guideSupply = null;   // 전망 계산이 남기는 전력 수급 경고 (문제없으면 null)
 function renderGuide(state) {
@@ -540,7 +550,7 @@ function renderGuide(state) {
   const eOpt = pol.energy && POLICIES.energy.options[pol.energy];
   const eDue = Math.max(0, policyAtOf(state, 'energy') - (now - start));
   const others = Object.keys(POLICIES).filter((k) => k !== 'energy' && pol[k]).map((k) => policyLabel(k, pol[k]));
-  let html = '<div class="g-line"><span class="k">노선</span>' +
+  let html = moodStripHtml(state.mood && state.mood.pillars) + '<div class="g-line"><span class="k">노선</span>' +
     (eOpt ? '<b class="g-main">' + eOpt.label + '</b>' : '<span class="muted">에너지 정책 ' + (eDue <= 0 ? '곧 결정' : eDue + '개월 뒤 결정') + '</span>') +
     (others.length ? '<small>' + others.join(' · ') + '</small>' : '') + '</div>';
   // 2) 대표 공약: 에너지 정책의 공약, 없으면 기한이 가장 가까운 공약
@@ -576,10 +586,16 @@ function renderGuide(state) {
       if (lack && TECH_LINE[line].some((k) => (tw[k] || 0) >= 0.5)) items.push({ cls: 'warn', mark: '🔬', name: TECH[lack].name + ' 설비 부족', tip: '지어야 노선 테크가 다 반영됨', title: '트리가 둘인 노선은 두 설비를 모두 지어야 연구 점수가 끝까지 찹니다. 한쪽만 쓰면 절반까지만 반영됩니다.' });
     }
   }
-  const key0 = (f) => f.key.split(':')[0];
-  const nameOf = (f) => { const k = key0(f); return (k === 'nuisance' || k === 'policy' || k === 'pledge') ? f.label.replace(/ \(.*$/, '') : (MOOD_LABEL[k] || f.label); };
-  const neg = ((state.mood && state.mood.factors) || []).filter((f) => f.value <= -1 && key0(f) !== 'policy' && key0(f) !== 'soft').sort((a, b) => a.value - b.value);   // 정책 노선 자체의 민심 대가는 손쓸 수 없으니 뺌
-  for (const f of neg) items.push({ cls: 'bad', mark: '−' + fmt(Math.abs(f.value), 1), name: nameOf(f), tip: GUIDE_TIP[key0(f)] || '', title: f.label });
+  // 설비 과잉: 남는 설비의 유지비가 요금에 얹히는 중
+  { const rw = reserveSurcharge(state); if (rw >= 2) items.push({ cls: 'warn', mark: '🏭', name: '설비 과잉 · 요금 +' + fmt(rw) + '원', tip: '새 도시로 수요 늘리기 · 낡은 설비 철거', title: '조절 설비(복합발전·석탄·원전)가 한 해 최대 수요의 ' + fmt(reserveYear(state) * 100) + '%입니다. ' + fmt(ECON.reserveFree * 100) + '%를 넘는 만큼 남는 설비의 유지비가 전기요금에 얹힙니다.' }); }
+  // 점수가 낮은 분야(절반 아래)와, 분야 안에서 크게 깎이는 것
+  const pillarsNow = (state.mood && state.mood.pillars) || [];
+  for (const p of pillarsNow.filter((p) => p.score < p.max * 0.4).sort((a, b) => a.score - b.score)) items.push({ cls: p.score < p.max * 0.2 ? 'bad' : 'warn', mark: fmt(p.score) + '/' + p.max, name: p.name, tip: GUIDE_TIP[p.key] || '', title: p.parts.map((x) => x.label).join('\n') });
+  for (const p of pillarsNow) for (const x of p.parts) {
+    const k = x.key.split(':')[0];
+    if (k === 'housing' && x.value < ECON.moodHousingMax * 0.7) items.push({ cls: 'warn', mark: '🏙', name: '도시가 빽빽함 (주거 ' + fmt(x.value, 1) + '/' + ECON.moodHousingMax + ')', tip: GUIDE_TIP.housing, title: x.label });
+    else if (x.value <= -2 && GUIDE_TIP[k]) items.push({ cls: 'bad', mark: '−' + fmt(Math.abs(x.value), 1), name: x.label.replace(/ \(.*$/, ''), tip: GUIDE_TIP[k], title: x.label });
+  }
   html += '<div class="g-watch"><div class="k">신경 쓸 것</div>' +
     (items.length ? items.slice(0, 3).map((it) => '<div class="g-row ' + it.cls + '"' + (it.title ? ' title="' + esc(it.title) + '"' : '') + '><b>' + it.mark + '</b><span class="n">' + it.name + '</span><span class="tip">' + it.tip + '</span></div>').join('')
                   : '<div class="g-ok">✓ 지금은 순조롭습니다</div>') + '</div>';
@@ -712,6 +728,14 @@ function renderCityTab(state) {
   document.getElementById('city-need2').textContent = ECON.cityTiles;
   document.getElementById('city-cost').innerHTML = fmt(cityFoundCost(state)) + '억' + ' <small class="muted">(도시가 늘수록 비싸짐)</small>';
   const draft = state.cityDraft;
+  // 세우면 무엇이 달라지는지 미리 보여 줌: 들어오는 사람(전력 수요)과 주거 여유 점수
+  { const eff = draft && draft.tiles.length ? cityEffTiles({ tiles: draft.tiles }) : ECON.cityTiles;
+    const nc = cityNewcomersNow(state, eff).n, h0 = housingScore(housingDensity(state)), h1 = housingScore(housingDensity(state, eff, nc));
+    const fx = document.getElementById('city-effect');
+    if (fx) fx.innerHTML = '<div class="row"><span>들어오는 사람</span><b>+' + fmt(nc) + '만 명</b></div>' +
+      '<div class="row"><span>늘어나는 전력 수요 (한 해 최대)</span><b class="warn">약 +' + fmt(Math.round(nc * perCapitaNow(state) * WORST_PEAK_MULT / 10) * 10) + ' MW</b></div>' +
+      '<div class="row"><span>주거 여유 (도시·생활 분야)</span><b class="' + (h1 > h0 + 0.05 ? 'good' : '') + '">' + fmt(h0, 1) + ' → ' + fmt(h1, 1) + ' / ' + ECON.moodHousingMax + '</b></div>'; }
+
   document.getElementById('city-count').textContent = draft ? draft.tiles.length : 0;
   document.getElementById('city-start').classList.toggle('hidden', !!draft);
   document.getElementById('city-confirm').classList.toggle('hidden', !draft);
@@ -731,28 +755,33 @@ function setHtmlKeepOpen(el, html) {
   if (open.size) for (const s of el.querySelectorAll('details > summary')) if (open.has(key(s))) s.parentElement.open = true;
 }
 
-// 민심 요인을 다섯 갈래로 모음 (요인이 열 개를 넘으면 한눈에 안 들어오므로, 결산 맨 위에는 갈래별 합만 보여 주고 낱낱은 펼쳐서 봄)
-const MOOD_GROUPS = [
-  { name: '전력', keys: ['reliab', 'price', 'gas'] },
-  { name: '환경', keys: ['clean', 'land', 'nuisance', 'nukes', 'accident'] },
-  { name: '경제', keys: ['economy', 'export', 'crowd', 'cities'] },
-  { name: '연구', keys: ['tech'] },
-  { name: '정책·공약', keys: ['policy', 'pledge', 'campaign'] },
-  { name: '기타', keys: [] },
-];
-function moodGrouped(factors) {
-  const out = MOOD_GROUPS.map((g) => ({ name: g.name, sum: 0, list: [] }));
-  for (const f of factors || []) {
-    const k = f.key.split(':')[0];
-    let i = MOOD_GROUPS.findIndex((g) => g.keys.includes(k)); if (i < 0) i = MOOD_GROUPS.length - 1;
-    out[i].list.push(f); out[i].sum += f.value;
-  }
-  for (const g of out) { g.sum = Math.round(g.sum * 10) / 10; g.list.sort((a, b) => Math.abs(b.value) - Math.abs(a.value)); }
-  return out.filter((g) => g.list.length);
+// ------------------------------------------------------------
+// 민심 성적표: 다섯 분야(각 20점)의 점수를 막대로 보여 줌 (결산 창 · 길잡이 공통)
+// ------------------------------------------------------------
+const moodSign = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + fmt(Math.abs(v), 1);
+const moodCls = (p) => (p.score >= p.max * 0.75 ? 'good' : p.score >= p.max * 0.45 ? 'mid' : 'bad');
+function moodTip(p) { return p.parts.map((x) => x.label + '  ' + (p.parts.length === 1 ? fmt(x.value, 1) + '점' : moodSign(x.value))).join('\n').replace(/"/g, '&quot;'); }
+// 지난달의 분야별 점수 (결산에서 오르내림을 보여 줄 때)
+function moodPrevOf(state) {
+  const h = state.history || [];
+  return h.length >= 2 && h[h.length - 2].mood && h[h.length - 2].mood.power !== undefined ? h[h.length - 2].mood : null;
 }
-function moodShortName(f) {
-  const k = f.key.split(':')[0];
-  return k === 'nuisance' || k === 'policy' || k === 'pledge' || k === 'campaign' ? f.label.replace(/ \(.*$/, '') : (MOOD_LABEL[k] || f.label);
+// 큰 막대 다섯 줄 (결산 창)
+function moodBarsHtml(pillars, extras, prev) {
+  let html = '<div class="mood-bars">';
+  for (const p of pillars || []) {
+    const dv = prev && prev[p.key] !== undefined ? Math.round((p.score - prev[p.key]) * 10) / 10 : 0;
+    html += '<div class="mb ' + moodCls(p) + '" title="' + moodTip(p) + '"><span class="n">' + p.icon + ' ' + p.name + '</span><span class="bar"><i style="width:' + clamp(p.score / p.max * 100, 0, 100) + '%"></i></span>' +
+      '<b>' + fmt(p.score, 1) + '</b><small>/ ' + p.max + '</small><i class="dv ' + (dv > 0 ? 'up' : dv < 0 ? 'down' : '') + '">' + (Math.abs(dv) >= 0.3 ? (dv > 0 ? '▲' : '▼') + fmt(Math.abs(dv), 1) : '') + '</i></div>';
+  }
+  for (const x of extras || []) html += '<div class="mb-x ' + (x.value >= 0 ? 'good' : 'bad') + '"><span>' + x.label + '</span><b>' + moodSign(x.value) + '</b></div>';
+  return html + '</div>';
+}
+// 작은 칸 다섯 개 (길잡이): 아이콘 · 이름 · 점수
+function moodStripHtml(pillars) {
+  if (!pillars || !pillars.length) return '';
+  return '<div class="mood-strip">' + pillars.map((p) =>
+    '<div class="ms ' + moodCls(p) + '" title="' + p.name + ' ' + fmt(p.score, 1) + ' / ' + p.max + '\n' + moodTip(p) + '"><div class="t">' + p.icon + ' ' + p.name.replace('·생활', '').replace('·신뢰', '').replace(' 공급', '').replace('전기 ', '') + '</div><div class="v">' + fmt(p.score) + '<small>/' + p.max + '</small></div><div class="bar"><i style="width:' + clamp(p.score / p.max * 100, 0, 100) + '%"></i></div></div>').join('') + '</div>';
 }
 
 // ------------------------------------------------------------
@@ -868,56 +897,46 @@ function renderReport(report) {
   if (report.tempFactor !== 1) right += row('외기온에 따른 가스 발전 출력', (report.tempFactor >= 1 ? '+' : '') + fmt((report.tempFactor - 1) * 100, 1) + '%');
   if (report.freqHours > 0) right += '<div class="note">주파수 사고: 태양광·풍력·배터리·수입처럼 관성이 없는 전기가 한도(' + limitPct + '%)에 닿은 시간대에는 발전소가 넉넉해도 낮은 확률(시간대마다 ' + fmt(ECON.freqRiskAtLimit * 100) + '%)로 사고가 나서 그 시간 수요의 ' + shedPct + '%가 끊깁니다. 계통 테크를 올리면 한도가 넓어지고(1단계 80%), 4단계부터는 사고가 나지 않습니다.</div>';
 
-  // ---- 민심 ----
+  // ---- 민심: 다섯 분야 성적표 ----
   const hp = report.happiness;
   let moodRows = '';
   const hpEnd = hp ? (hp.end !== undefined ? hp.end : hp.after) : 0;
-  const shock = hp ? (hp.items || []).reduce((s, it) => s + it.delta, 0) : 0;
-  const questD = hp ? Math.round((hpEnd - hp.after) * 10) / 10 : 0;   // 목표·공약의 보상과 벌칙으로 바뀐 몫
-  if (hp) {
-    moodRows += row('기본', fmt(ECON.moodBase));
-    for (const grp of moodGrouped(hp.factors)) {
-      moodRows += '<div class="row grp"><span>' + grp.name + '</span><b class="' + (grp.sum >= 0 ? 'good' : 'bad') + '">' + sign(grp.sum) + '</b></div>';
-      for (const f of grp.list) moodRows += row(f.label, sign(f.value), 'sub ' + (f.value > 0 ? 'good' : 'bad'));
+  const questD = hp ? Math.round((hpEnd - hp.after) * 10) / 10 : 0;   // 결산 뒤 목표·공약의 보상과 벌칙으로 바뀐 몫 (여론으로 남음)
+  if (hp && hp.pillars) {
+    for (const p of hp.pillars) {
+      moodRows += '<div class="row grp"><span>' + p.icon + ' ' + p.name + '</span><b class="' + (moodCls(p) === 'mid' ? 'warn' : moodCls(p)) + '">' + fmt(p.score, 1) + ' / ' + p.max + '</b></div>';
+      for (const x of p.parts) moodRows += row(x.label, p.parts.length === 1 ? fmt(x.value, 1) + '점' : moodSign(x.value), 'sub ' + (x.value < 0 ? 'bad' : p.parts.length === 1 ? '' : 'good'));
     }
-    moodRows += row('예상 민심 (기본 + 위 숫자의 합)', fmt(hp.target), 'total');
+    for (const x of hp.extras || []) moodRows += row(x.label, moodSign(x.value), x.value > 0 ? 'good' : 'bad');
+    moodRows += row('예상 민심 (다섯 분야의 합' + ((hp.extras || []).length ? ' + 여론' : '') + ')', fmt(hp.target, 1), 'total');
     moodRows += '<h3 style="margin-top:12px">이번 달 민심</h3>';
     moodRows += row('지난달', fmt(hp.before, 1));
-    moodRows += row('예상 민심 쪽으로 이동 (차이의 ' + fmt(ECON.moodPull * 100) + '%)', sign(hp.pull !== undefined ? hp.pull : hp.after - hp.before - shock), (hp.pull || 0) >= 0 ? 'good' : 'bad');
-    for (const it of (hp.items || [])) moodRows += row(it.label + ' (이번 달에만 깎임)', sign(it.delta), it.delta > 0 ? 'good' : 'bad');
-    if (questD) moodRows += row('목표·공약 결과', sign(questD), questD > 0 ? 'good' : 'bad');
-    moodRows += row('이번 달', fmt(hpEnd, 1), 'total ' + (hpEnd < 40 ? 'bad' : hpEnd >= 70 ? 'good' : ''));
+    moodRows += row('예상 민심 쪽으로 이동 (차이의 ' + fmt(ECON.moodPull * 100) + '%)', moodSign(hp.pull !== undefined ? hp.pull : hp.after - hp.before), (hp.pull || 0) >= 0 ? 'good' : 'bad');
+    if (questD) moodRows += row('목표·공약 결과 (여론으로 남아 서서히 옅어짐)', moodSign(questD), questD > 0 ? 'good' : 'bad');
+    moodRows += row('이번 달', fmt(hpEnd, 1), 'total ' + (hpEnd < 40 ? 'bad' : hpEnd >= 65 ? 'good' : ''));
     if (report.score) moodRows += row('국정운영 점수: 이번 달 민심만큼 쌓임' + (report.score.weight > 1 ? ' (11년 차부터 ' + report.score.weight + '배)' : ''), '+' + fmt(report.score.gain, 1) + '점 → ' + fmt(report.score.total) + '점');
-    if (hpEnd < 20) moodRows += '<div class="row bad"><span>⚠ 민심이 0이 되면 탄핵됩니다</span></div>';
+    if (hpEnd < ECON.happinessGameOver + 15) moodRows += '<div class="row bad"><span>⚠ 민심이 ' + ECON.happinessGameOver + ' 이하가 되면 탄핵됩니다</span></div>';
   }
 
   // ---- 핵심 요약 (맨 위 네 칸) ----
   const card = (k, v, sub, cls) => '<div class="rh-card ' + (cls || '') + '"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + sub + '</div></div>';
   let head = card('이번 달 손익', (m.profit >= 0 ? '+' : '−') + fmt(Math.abs(m.profit)) + '억', '수입 ' + fmt(m.income) + ' · 지출 ' + fmt(m.expense), m.profit >= 0 ? 'good' : 'bad');
-  if (hp) head += card('민심', fmt(hp.before, 1) + ' → ' + fmt(hpEnd, 1), '예상 ' + fmt(hp.target) + (shock ? ' · 사고 ' + sign(shock) : '') + (questD ? ' · 목표 결과 ' + sign(questD) : ''), hpEnd < 40 ? 'bad' : hpEnd >= hp.before ? 'good' : '');
+  if (hp) { const dM = Math.round(hpEnd) - Math.round(hp.before); head += card('민심', fmt(hp.before) + ' → ' + fmt(hpEnd) + (dM ? ' <small class="' + (dM > 0 ? 'good' : 'bad') + '">' + (dM > 0 ? '▲' : '▼') + Math.abs(dM) + '</small>' : ''), '예상 ' + fmt(hp.target) + (questD ? ' · 목표 결과 ' + sign(questD) : ''), hpEnd < 40 ? 'bad' : hpEnd >= hp.before ? 'good' : ''); }
   head += shortHours > 0 ? card('전력 공급', '정전 ' + shortHours + '시간', '공급 부족' + (report.freqHours ? ' · 주파수 사고 ' + report.freqHours + '시간' : ''), 'bad')
     : report.freqHours > 0 ? card('전력 공급', '주파수 사고 ' + report.freqHours + '시간', '발전소는 충분 · 관성 부족 (한도 ' + limitPct + '%)', 'bad')
     : card('전력 공급', '정전 없음', '탄소 ' + fmt(e.co2) + ' t', 'good');
   if (report.score) head += card('국정운영 점수 (민심만큼 쌓임)', '+' + fmt(report.score.gain, 1), '누적 ' + fmt(report.score.total) + '점' + (report.score.weight > 1 ? ' · ' + report.score.weight + '배 구간' : ''), 'gold');
   const hd = document.getElementById('report-head'); if (hd) hd.innerHTML = head;
 
-  // 민심: 갈래별 합만 칩으로 (낱낱의 요인은 칩에 마우스를 올리거나 아래 "민심 요인 자세히"에서)
+  // 민심 성적표: 다섯 분야의 점수 막대 (낱낱의 내역은 막대에 마우스를 올리거나 아래 "민심 성적표 자세히"에서)
   const md = document.getElementById('report-mood');
-  if (md) {
-    let chips = '';
-    if (hp) {
-      chips = '<span class="eq">예상 민심 <b>' + fmt(hp.target) + '</b> = 기본 ' + fmt(ECON.moodBase) + '</span>' +
-        moodGrouped(hp.factors).map((grp) => '<span class="mf ' + (grp.sum >= 0 ? 'good' : 'bad') + '" title="' + grp.list.map((f) => moodShortName(f) + ' ' + sign(f.value)).join(' · ').replace(/"/g, '&quot;') + '">' +
-          (grp.list.length === 1 ? moodShortName(grp.list[0]) : grp.name) + ' <b>' + sign(grp.sum) + '</b></span>').join('');
-    }
-    md.innerHTML = chips;
-  }
+  if (md) md.innerHTML = hp && hp.pillars ? '<div class="mood-eq">예상 민심 <b>' + fmt(hp.target) + '</b> <small>= 다섯 분야의 합' + ((hp.extras || []).length ? ' + 여론' : '') + ' · 민심은 매달 이 값 쪽으로 움직임</small></div>' + moodBarsHtml(hp.pillars, hp.extras, moodPrevOf(state)) : '';
 
   // 세부 내역은 접어 두고, 필요할 때 펼쳐 봄 (한 번 펼친 칸은 다음 달에도 펼쳐진 채로)
   setHtmlKeepOpen(document.getElementById('report-body'),
     '<details class="rsec"><summary>수입 · 지출 내역 <span>손익 ' + (m.profit >= 0 ? '+' : '−') + fmt(Math.abs(m.profit), 1) + '억</span></summary><div class="rbody one">' + left + '</div></details>' +
     '<details class="rsec"><summary>발전량 · 계통 <span>총 발전 ' + fmtMWh(totalGen) + '</span></summary><div class="rbody one">' + right + '</div></details>' +
-    (moodRows ? '<details class="rsec"><summary>민심 요인 자세히 <span>예상 ' + fmt(hp.target) + '</span></summary><div class="rbody one">' + moodRows + '</div></details>' : ''));
+    (moodRows ? '<details class="rsec"><summary>민심 성적표 자세히 <span>예상 ' + fmt(hp.target) + '</span></summary><div class="rbody one">' + moodRows + '</div></details>' : ''));
 }
 
 // ------------------------------------------------------------
@@ -1037,7 +1056,7 @@ function summaryText(state) {
     '최대 수요 ' + fmt(peak) + ' MW · 조절 가능 ' + fmt(c.gt + c.ccgt + c.coal + c.nuclear + c.smr) + ' MW · 재생 ' + fmt(c.solar + c.wind) + ' MW · 배터리 ' + fmt(c.ess) + ' MW · 연계선 ' + fmt(c.link) + ' MW · 공급 예비율 ' + fmt((supplyDemandRatio(state) - 1) * 100) + '%',
     '설비: ' + (fleet || '없음'),
     '테크: ' + TECH_ORDER.map((k) => (TECH_SHORT[k] || k) + ' ' + (state.tech[k] || 0) + '/' + TECH[k].tiers.length).join(' · ') + ' · 정책: ' + pol,
-    r ? '지난달: 순이익 ' + fmt(Math.round(r.money.profit)) + '억 (발전 ' + fmt(Math.round(r.money.energyRev)) + ' 연료 ' + fmt(Math.round(r.money.fuel)) + ' 탄소세 ' + fmt(Math.round(r.money.carbon)) + ' 수출 ' + fmt(Math.round(r.money.exportRev)) + ') · 정전 ' + r.blackoutHours + 'h · 배출 ' + fmt(Math.round(r.energy.co2)) + ' t (원단위 ' + reportIntensity(r).toFixed(2) + ', 기준 ' + (intensityTarget(state) === null ? '없음' : intensityTarget(state).toFixed(2)) + ') · SMP ' + fmt(r.hours.reduce((s, h) => s + h.smp, 0) / 24) + '원 · 출력제한 ' + fmtMWh(r.energy.curtail) + ' · 민심 항목 ' + r.happiness.items.map((i) => i.label + (i.delta > 0 ? '+' : '') + i.delta).join(', ') : '지난달 결산 없음',
+    r ? '지난달: 순이익 ' + fmt(Math.round(r.money.profit)) + '억 (발전 ' + fmt(Math.round(r.money.energyRev)) + ' 연료 ' + fmt(Math.round(r.money.fuel)) + ' 탄소세 ' + fmt(Math.round(r.money.carbon)) + ' 수출 ' + fmt(Math.round(r.money.exportRev)) + ') · 정전 ' + r.blackoutHours + 'h · 배출 ' + fmt(Math.round(r.energy.co2)) + ' t (원단위 ' + reportIntensity(r).toFixed(2) + ', 기준 ' + intensityTarget(state).toFixed(2) + ') · SMP ' + fmt(r.hours.reduce((s, h) => s + h.smp, 0) / 24) + '원 · 출력제한 ' + fmtMWh(r.energy.curtail) + ' · 민심 분야 ' + (r.happiness.pillars || []).map((p) => p.name + ' ' + p.score + '/' + p.max).join(', ') : '지난달 결산 없음',
     '목표: ' + ((state.quests || []).filter((q) => q.status === 'active').map((q) => questById(q.id).title).join(', ') || '없음') + ' · 진행 중 효과: ' + (effectsNow(state).list.map((e) => e.name + '(' + e.left + '개월)').join(', ') || '없음'),
   ];
   return lines.filter(Boolean).join('\n');
@@ -1122,18 +1141,23 @@ function scoreBreakdownHtml(s) {
     bar('1~10년 차', p.early || 0, p.earlyMax || 333, avg(d.avgEarly) !== null ? '평균 민심 ' + avg(d.avgEarly) : '-') +
     bar('11~20년 차 <small>한 달이 ' + ECON.scoreLateWeight + '배</small>', p.late || 0, p.lateMax || 667, avg(d.avgLate) !== null ? '평균 민심 ' + avg(d.avgLate) : '여기까지 가지 못했습니다') + '</div>';
   const f = d.factors || {};
-  const keys = Object.keys(f).filter((k) => MOOD_LABEL[k] && Math.abs(f[k]) >= 0.1).sort((a, b) => f[b] - f[a]);
-  if (keys.length) html += '<div class="mood-avg"><span class="k">임기 평균 민심 요인</span>' + keys.map((k) => '<span class="' + (f[k] > 0 ? 'good' : 'bad') + '">' + MOOD_LABEL[k] + ' ' + (f[k] > 0 ? '+' : '−') + fmt(Math.abs(f[k]), 1) + '</span>').join('') + '</div>';
+  // 분야별 임기 평균 (각 20점 만점)
+  const pl = (typeof MOOD_PILLARS !== 'undefined' ? MOOD_PILLARS : []).filter((p) => f[p.key] !== undefined && f.power !== undefined);
+  if (pl.length) html += '<div class="mood-avg"><span class="k">분야별 임기 평균 (각 ' + ECON.moodPillarMax + '점)</span>' + pl.map((p) => '<span class="' + (f[p.key] >= ECON.moodPillarMax * 0.75 ? 'good' : f[p.key] < ECON.moodPillarMax * 0.45 ? 'bad' : '') + '">' + p.icon + ' ' + p.name + ' ' + fmt(f[p.key], 1) + '</span>').join('') + '</div>';
   return html;
 }
 
 // 엔딩 원인 분석: 한두 줄로 "왜 이렇게 끝났는지"
 const HAPPY_CAUSE = {
+  power:  ['정전 (전력 공급 분야)', '정전은 한 번 나면 여러 달 점수에 남습니다. 한 해 최대 수요보다 10~20% 넉넉한 조절 전원을 미리 지어 두고, 석탄·원자력만으로 채우지 말고 복합발전이나 배터리를 섞으세요.'],
+  env:    ['탄소 배출 (환경 분야)', '환경 점수는 전기를 만들 때 나오는 탄소가 0에 가까울수록 높습니다. 화력은 테크를 올려도 탄소 기준을 넘기 쉽습니다. 태양광·풍력·원자력 같은 무탄소 전원을 섞으세요.'],
+  city:   ['도시·생활 분야', '인구가 늘면 도시가 빽빽해집니다. 새 도시를 세워 주거 여유를 지키고, 기피 시설(석탄·풍력·원전)은 도시에서 멀리 두세요. 남는 전기를 수출하면 점수가 더 오릅니다.'],
+  future: ['연구와 공약 (미래·신뢰 분야)', '국민의 기대는 해마다 올라갑니다. 내 노선의 테크와 계통 테크를 꾸준히 올리고, 정책을 고를 때 한 약속을 기한 안에 지키세요.'],
   'nuisance:nuclear': ['도시 근처 원전에 대한 반발', '원전은 도시에서 멀리(안전성 설계 후 4칸 이상) 떨어뜨려 지으세요.'],
   'nuisance:wind':    ['도시 근처 풍력 소음', '풍력은 도시에서 4칸 이상 떨어진 해안이나 바다에 지으세요.'],
   'nuisance:coal':    ['석탄 매연', '석탄은 도시에서 5칸 이상 떨어뜨려 지으세요.'],
   crowd:     ['도시 과밀', '도시 탭에서 새 도시를 세워 인구를 나누면 바로 풀립니다.'],
-  price:     ['비싼 전기 요금', '국민이 기대하는 전기값은 해마다 내려갑니다. 가스만 쓰면 도매가를 그대로 내지만, 원전·석탄·재생 비중이 클수록 소비자 요금이 도매가보다 싸집니다. 연료비를 줄이는 테크와 요금 지원도 도움이 됩니다.'],
+  price:     ['비싼 전기 요금 (전기 요금 분야)', '국민이 기대하는 전기값은 해마다 내려갑니다. 가스만 쓰면 도매가를 그대로 내지만, 원전·석탄·재생 비중이 클수록 소비자 요금이 도매가보다 싸집니다. 설비를 너무 많이 지어도 남는 설비의 유지비가 요금에 얹힙니다. 연료비를 줄이는 테크와 요금 지원도 도움이 됩니다.'],
   clean:     ['탄소 배출', '화력은 테크를 올려도 탄소가 국민의 기대 수준을 넘기 쉽습니다. 탄소 감축 테크를 연구하면서 태양광·풍력·원자력 같은 무탄소 전원을 섞으세요.'],
   reliab:    ['정전의 기억', '정전은 한 번 나면 여러 달 민심에 남습니다. 최대 수요보다 10~20% 넉넉한 조절 전원을 미리 지어 두세요.'],
   economy:   ['경기 침체', '전기가 넉넉해야 사람과 공장이 들어옵니다. 조절 전원 여유를 20% 넘게 두면 인구가 더 빨리 늡니다.'],
@@ -1168,11 +1192,12 @@ function analyzeEnding(state, s) {
   if (s.reason === 'impeached' || s.reason === 'election') {
     const neg = {};
     for (const x of recent) for (const k in (x.hneg || {})) neg[k] = (neg[k] || 0) + x.hneg[k];
-    const ranked = Object.entries(neg).sort((a, b) => a[1] - b[1]).filter(([k]) => HAPPY_CAUSE[k]);
+    const pkeys = ['power', 'price', 'env', 'city', 'future'];   // 분야별로 만점에서 잃은 점수
+    const ranked = Object.entries(neg).filter(([k]) => pkeys.includes(k)).sort((a, b) => a[1] - b[1]).filter(([k]) => HAPPY_CAUSE[k]);
     if (ranked.length) {
       const total = ranked.reduce((a, [, v]) => a + v, 0);
       const top = ranked.slice(0, 2).map(([k, v]) => HAPPY_CAUSE[k][0] + ' (' + Math.round(v / total * 100) + '%)');
-      lines.push('<span class="k">주요 원인</span>최근 3년 동안 민심을 깎은 것은 ' + top.join(', ') + '이었습니다.');
+      lines.push('<span class="k">주요 원인</span>최근 3년 동안 점수를 가장 많이 잃은 분야는 ' + top.join(', ') + '이었습니다.');
       lines.push('<span class="k">조언</span>' + HAPPY_CAUSE[ranked[0][0]][1]);
     } else lines.push('<span class="k">주요 원인</span>민심이 회복될 틈 없이 떨어졌습니다.');
   } else if (s.reason === 'resigned') {
@@ -1203,7 +1228,7 @@ function analyzeEnding(state, s) {
     const minH = h.reduce((a, x) => x.happy < a.happy ? x : a, h[0]);
     const worst = {};
     for (const x of h) for (const k in (x.hneg || {})) worst[k] = (worst[k] || 0) + x.hneg[k];
-    const w = Object.entries(worst).sort((a, b) => a[1] - b[1]).filter(([k]) => HAPPY_CAUSE[k])[0];
+    const w = Object.entries(worst).filter(([k]) => ['power', 'price', 'env', 'city', 'future'].includes(k)).sort((a, b) => a[1] - b[1]).filter(([k]) => HAPPY_CAUSE[k])[0];
     lines.push('<span class="k">고비</span>민심이 가장 낮았던 때는 ' + minH.year + '년 ' + minH.month + '월(' + fmt(minH.happy) + ')이었고' + (w ? ', 가장 자주 발목을 잡은 것은 ' + HAPPY_CAUSE[w[0]][0] + '이었습니다.' : '.'));
   }
   return lines;
@@ -1664,12 +1689,12 @@ function renderTechRdPanel(state) {
   const nextGate = blocked.length ? blocked[0].need : 0;
   const nextNames = blocked.filter((x) => x.need === nextGate);
   const tw = techWeights(state), wT = techWeightedTiers(state), expT = moodTechExpected(state);
-  const tv = clamp((wT - expT) * ECON.moodTechSlope, ECON.moodTechMin, ECON.moodTechMax);
+  const tv = clamp(ECON.moodResearchMid + (wT - expT) * ECON.moodTechSlope, 0, ECON.moodResearchMax);   // 연구 점수 (미래·신뢰 분야)
   const myLine = techLineOf(state);
   const active = researchActive(state), slots = researchSlots(state);
   // 머리줄 요약: 접어 두어도 규모 · 동시 연구 · 연구가 민심에 주는 영향은 보임
   const sum = document.getElementById('rd-dock-sum');
-  if (sum) sum.innerHTML = '규모 <b>' + fmt(lv) + '</b> · 동시 ' + active + '/' + slots + ' · 민심 <b class="' + (tv >= 0 ? 'good' : 'bad') + '">' + (tv >= 0 ? '+' : '−') + fmt(Math.abs(tv), 1) + '</b>';
+  if (sum) sum.innerHTML = '규모 <b>' + fmt(lv) + '</b> · 동시 ' + active + '/' + slots + ' · 연구 점수 <b class="' + (tv >= ECON.moodResearchMid ? 'good' : 'bad') + '">' + fmt(tv, 1) + '</b><small>/' + ECON.moodResearchMax + '</small>';
 
   // ---- 연구소: 확장 버튼 한 줄 ----
   let html = '<div class="rk-lab" title="연구소가 클수록 높은 단계의 연구가 열리고, 성공 확률이 오르고(지금 +' + pct(rdBonus(state)) + '), ' + RD_PER_SLOT + '마다 동시에 하는 연구가 하나 늘어납니다. 유지비는 없습니다. 확장은 한 달에 한 번입니다.">' +
@@ -1709,10 +1734,10 @@ function renderTechRdPanel(state) {
   const moodTip = (myLine
     ? '내 노선(' + TECH_LINES.find((l) => l.policy === myLine).name + ')의 테크와 계통 테크를 2:1로 본 값입니다. 트리가 둘인 노선은 두 테크의 평균이고, 그 설비를 실제로 지어야(최대 수요의 ' + Math.round(ECON.moodTechFullShare * 100) + '% 이상) 온전히 반영됩니다. 15단계인 원자력은 10단계 눈금으로 바꿔서 셉니다.'
     : '지금 쓰는 설비들의 테크 평균 단계입니다. 안 쓰는 설비의 테크는 세지 않습니다. 에너지 정책으로 노선을 고르면 그 노선의 테크와 계통 테크만 봅니다.') +
-    ' 국민의 기대는 해마다 ' + ECON.moodTechPerYear + '단계씩 올라가고, 1단계 앞서면 민심 +' + ECON.moodTechSlope + ', 뒤처지면 −' + ECON.moodTechSlope + '입니다.';
+    ' 국민의 기대는 해마다 ' + ECON.moodTechPerYear + '단계씩 올라갑니다. 기대와 같으면 연구 점수 ' + ECON.moodResearchMid + '점(만점 ' + ECON.moodResearchMax + '), 1단계 앞설 때마다 +' + ECON.moodTechSlope + ', 뒤처질 때마다 −' + ECON.moodTechSlope + '입니다.';
   let more = '<div class="tr-mood">' +
     (myLine ? '내 노선 <b>' + fmt(techLineProgress(state, myLine), 1) + '</b> · 계통 ' + fmt(techNorm(state, 'grid'), 1) + ' → 연구 <b>' + fmt(wT, 1) + '</b>' : '주력 테크 평균 <b>' + fmt(wT, 1) + '</b>단계') +
-    ' · 기대 ' + fmt(expT, 1) + ' → 민심 <b class="' + (tv >= 0 ? 'good' : 'bad') + '">' + (tv >= 0 ? '+' : '−') + fmt(Math.abs(tv), 1) + '</b></div>' +
+    ' · 기대 ' + fmt(expT, 1) + ' → 연구 점수 <b class="' + (tv >= ECON.moodResearchMid ? 'good' : 'bad') + '">' + fmt(tv, 1) + '</b> / ' + ECON.moodResearchMax + '</div>' +
     '<div class="lab-line muted">' + moodTip + '</div>' +
     '<div class="lab-line muted">연구소 키우기는 한 달에 한 번입니다. ' + gateText + ' 이름 옆의 점은 그 설비가 연구 점수에 들어가는 정도입니다 (초록 = 주력, 노랑 = 일부·보조, 회색 = 안 씀).</div>';
   more += '<div class="lab-line">' + TECH_LINES.map((ln) => { const got = ln.keys.reduce((a, k) => a + (state.tech[k] || 0), 0), max = ln.keys.reduce((a, k) => a + TECH[k].tiers.length, 0); const mine = ln.policy && state.policies && state.policies.energy === ln.policy; return (mine ? '<b>' : '') + ln.name + ' ' + got + '/' + max + (mine ? ' (내 노선)</b>' : ''); }).join(' · ') + '</div>';
@@ -1748,6 +1773,7 @@ function renderCityStats(state) {
   const near = worst && worst.d > ECON.densityLimit * 0.85 && worst.d <= ECON.densityLimit;
   el.innerHTML = '<div class="cs-row"><span>👥 인구</span><b>' + fmt(pop) + '만 명</b></div>' +
     '<div class="cs-row"><span>🏙 도시</span><b>' + state.cities.length + '곳</b></div>' +
-    '<div class="cs-row"><span>과밀</span><b class="' + (crowded ? 'bad' : near ? 'warn' : 'good') + '">' + (crowded ? crowded + '곳 (민심 −)' : near ? '임박' : '없음') + '</b></div>' +
-    (worst ? '<div class="cs-row muted"><span>최고 밀도</span><span>' + worst.d.toFixed(1) + ' / ' + ECON.densityLimit + ' (' + worst.name + ')</span></div>' : '');
+    (() => { const dA = housingDensity(state), hs = housingScore(dA); return '<div class="cs-row" title="전국 평균 밀도가 칸당 ' + ECON.housingComfort + '만 명 이하면 만점, ' + ECON.densityLimit + '만 명이면 0점입니다. 빽빽해질수록 새로 들어오는 사람도 줄어듭니다."><span>주거 여유</span><b class="' + (hs >= ECON.moodHousingMax * 0.95 ? 'good' : hs >= ECON.moodHousingMax * 0.6 ? 'warn' : 'bad') + '">' + fmt(hs, 1) + ' / ' + ECON.moodHousingMax + '</b></div>' +
+      '<div class="cs-row muted"><span>평균 밀도</span><span>' + dA.toFixed(2) + '만 명/칸 (' + ECON.housingComfort + ' 이하면 만점)' + (housingGrowthMult(state) < 0.99 ? ' · 유입 ×' + fmt(housingGrowthMult(state), 2) : '') + '</span></div>'; })() +
+    (crowded ? '<div class="cs-row"><span>과밀 도시</span><b class="bad">' + crowded + '곳</b></div>' : '');
 }

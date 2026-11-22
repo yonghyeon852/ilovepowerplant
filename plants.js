@@ -23,18 +23,18 @@ const PLANTS = {
     fuelCost: 115, co2: 0.37, omRate: 0.03, varOm: 5, lifeYears: 20,
     dispatchable: true, inertial: true, minLoad: 0, ramp: 0.7,   // 한 시간에 용량의 70%까지 변경 (가스터빈이 없어져 첨두 대응도 맡음)
     terrain: [LAND],
-    traits: '빨리 짓고 출력 조절이 자유로움 · 연료비와 탄소세가 듦 · 가스에만 기대면 겨울과 가스값 급등에 약함',
-    desc: '가스터빈과 증기터빈을 함께 돌리는 화력발전입니다. 6개월이면 짓고 출력을 자유롭게 조절하지만, 연료비와 탄소세가 듭니다. 복합발전 테크로 효율과 출력을 올리고 탄소를 포집할 수 있지만, 테크를 올려도 탄소는 국민의 기대 수준을 넘기 쉽습니다. 태양광·풍력·원자력 같은 무탄소 전원을 섞어야 공기 점수가 오릅니다. 또 가스 발전이 전체의 55%를 넘으면, 겨울에는 난방에 쓸 가스가 모자라서, 가스값이 뛸 때는 그 부담 때문에 민심이 깎입니다.',
+    traits: '빨리 짓고 출력 조절이 자유로움 (한 시간에 70%) · 연료비와 탄소세가 듦 · 가스값이 뛰면 요금이 오름',
+    desc: '가스터빈과 증기터빈을 함께 돌리는 화력발전입니다. 6개월이면 짓고 출력을 자유롭게 조절하지만, 연료비와 탄소세가 듭니다. 수요를 따라 출력을 가장 잘 오르내리는 발전기라서, 석탄·원자력·태양광·풍력이 못 메우는 틈을 채웁니다. 복합발전 테크로 효율과 출력을 올리고 탄소를 포집할 수 있지만, 끝까지 올려도 탄소 기준을 겨우 맞추는 정도입니다. 태양광·풍력·원자력 같은 무탄소 전원을 섞어야 환경 점수가 오릅니다.',
   },
   coal: {
     name: '석탄화력', short: '석탄', kind: 'coal',
     width: 3, height: 2, color: '#546e7a',
     capacity: 500, capex: 4500, buildMonths: 10,
     fuelCost: 60, co2: 0.85, omRate: 0.04, varOm: 8, lifeYears: 25,
-    dispatchable: true, inertial: true, minLoad: 0.4, ramp: 0.2,   // 한 시간에 용량의 20%까지 변경
+    dispatchable: true, inertial: true, minLoad: 0.55, ramp: 0.05,   // 최소 출력 55% · 한 시간에 용량의 5%까지만 변경 (수요를 따라 오르내리는 일은 복합발전의 몫)
     terrain: [LAND],
-    traits: '연료가 싸고 꾸준함 · 탄소·매연이 가장 많음 · 출력 조절이 느림 (최소 40%)',
-    desc: '싼 전기를 꾸준히 만들지만 탄소를 가장 많이 냅니다. 도시 가까이 지으면 매연 불만이 생기고, 출력을 40% 아래로 못 줄여 밤에 전기가 남을 수 있습니다. 도매가보다 싸게 정산돼 소비자 요금을 낮춥니다. 석탄화력 테크로 탄소와 매연을 줄이고 출력 조절을 빠르게 할 수 있습니다.',
+    traits: '연료가 싸고 꾸준함 · 탄소·매연이 가장 많음 · 출력 조절이 느림 (최소 55% · 한 시간에 5%)',
+    desc: '싼 전기를 꾸준히 만들지만 탄소를 가장 많이 냅니다. 출력을 55% 아래로 못 줄이고 한 시간에 용량의 5%씩만 바꿀 수 있어서, 수요를 따라 오르내리지 못합니다. 석탄만 지으면 밤에는 전기가 남고 아침·저녁에는 모자라니, 바닥 수요는 석탄이 맡고 오르내리는 몫은 복합발전이나 배터리가 맡게 섞으세요. 도시 가까이 지으면 매연 불만이 생깁니다. 도매가보다 싸게 정산돼 소비자 요금을 낮춥니다. 석탄화력 테크로 탄소와 매연을 줄이고 출력 조절을 빠르게 할 수 있지만, 탄소는 끝까지 올려도 복합발전보다 많습니다.',
   },
   nuclear: {
     name: '원자력', short: '원전', kind: 'nuclear',
@@ -98,7 +98,7 @@ const PLANTS = {
     dispatchable: false, inertial: true, isLink: true,
     terrain: [LAND], edgeOnly: true,
     traits: '국경에 접한 칸 · 남는 전기를 수출 (돈 + 민심) · 모자라면 수입 · 수입은 수요의 30%까지',
-    desc: '이웃 나라와 전력망을 잇습니다. 수출량이 그달 수요의 1%일 때마다 민심이 +0.5 오릅니다(최대 +5). 팔 수 있는 것은 남는 전기뿐이라, 원전이나 태양광·풍력을 넉넉히 지어야 수출이 생깁니다. 전기가 남으면 수출하고(110→50원, 이웃의 구매 의향을 채울수록 싸짐), 모자라면 수입해 정전을 막습니다(170→300원, 많이 기댈수록 비싸지고 그 값이 SMP가 됨). 이웃도 여름·겨울에는 여유가 적고, 수입은 그 시간 수요의 30%까지만 가능합니다.',
+    desc: '이웃 나라와 전력망을 잇습니다. 수출량이 그달 수요의 1%일 때마다 민심(도시·생활 분야)이 +0.4 오릅니다(최대 +4). 팔 수 있는 것은 남는 전기뿐이라, 원전이나 태양광·풍력을 넉넉히 지어야 수출이 생깁니다. 전기가 남으면 수출하고(110→50원, 이웃의 구매 의향을 채울수록 싸짐), 모자라면 수입해 정전을 막습니다(170→300원, 많이 기댈수록 비싸지고 그 값이 SMP가 됨). 이웃도 여름·겨울에는 여유가 적고, 수입은 그 시간 수요의 30%까지만 가능합니다.',
   },
 };
 
@@ -217,43 +217,40 @@ const ECON = {
   demolishRefund: 0.05,    // 철거 완료 시 건설비의 5% 환급
 
   // 주민 민심 (0~100)
-  happinessStart: 70,
-  happyGrowthPivot: 68,    // 민심이 이 값이면 기본 증가율 그대로. 높으면 더 빨리, 낮으면 더 느리게 늘어남
+  happinessStart: 62,
+  happyGrowthPivot: 58,    // 민심이 이 값이면 기본 증가율 그대로. 높으면 더 빨리, 낮으면 더 느리게 늘어남
 
-  // ---------- 민심 ----------
-  //  민심은 매달 "예상 민심"를 향해 moodPull 비율만큼 움직인다. 예상 민심 = moodBase + 아래 요인들의 합 (0~100).
-  //  요인: 전력 안정 · 전기 요금 · 공기(탄소) · 경제 · 도시 과밀 · 기피 시설 · 원전 밀집 · 기술 · 연구 인력 · 정책 노선 · 요금 조정
-  //  그달의 정전·주파수 사고는 목표와 별개로 민심을 바로 깎는다 (happinessBlackout 등)
-  moodBase: 60,
-  moodSoftFrom: 30, moodSoftFrom2: 25, moodSoftRate: 0.5,   // (재선 뒤에는 기준이 +25로 내려감: 2기에는 재선 공약을 지켜야 100에 닿음)
-  //   // 요인 합이 +30(예상 민심 90)을 넘으면 넘는 부분은 절반만 반영: 고점은 모든 요인을 고르게 관리해야 닿음
-  moodPull: 0.10,
-  moodReliabMax: 10,        // 정전 기억이 없을 때 +10
-  moodOutageDecay: 0.90,    // 정전 기억이 매달 10%씩 옅어짐
-  moodOutagePerHour: 1.5,   // 기억에 남은 정전 1시간대당 −1.5
-  moodReliabMin: -20,
+  // ---------- 민심: 다섯 분야 × 20점짜리 성적표 ----------
+  //  민심(0~100)은 매달 "예상 민심" 쪽으로 차이의 moodPull만큼 움직인다.
+  //  예상 민심 = ① 전력 공급 + ② 전기 요금 + ③ 환경 + ④ 도시·생활 + ⑤ 미래·신뢰 (분야마다 0~20점) + 여론(사건·목표가 남긴 여운)
+  //  분야마다 만점이 20점이라 한두 가지만 잘해서는 100에 닿지 않는다 (모든 분야가 만점이어야 100) → 후반에도 100에 붙어 버리지 않음
+  moodPillarMax: 20,
+  moodPull: 0.35,           // 한 달에 차이의 35%를 따라감 (석 달이면 대부분 반영). 예전에는 10%라 한 달 변화가 0.2 안팎이었음
+  moodBuzzDecay: 0.90,      // 여론: 사건 선택·목표 보상처럼 한 번에 오르내린 민심은 매달 10%씩 옅어짐
+  moodBuzzCap: 30,
+  // ① 전력 공급: 정전이 없으면 20점. 기억에 남은 정전 1시간대마다 −moodPowerPerHour (기억은 매달 10%씩 옅어짐)
+  moodPowerPerHour: 2.5,
+  moodOutageDecay: 0.90,
+  // ② 전기 요금: 국민이 내는 요금이 기대 요금과 같으면 10점, 1원 쌀 때마다 +moodPriceSlope (50원 싸면 20점 · 50원 비싸면 0점)
   moodPriceRef0: 190,       // 국민이 기대하는 전기값(원/kWh): 시작 190원
   moodPriceRefDrop: 2.5,    //  해마다 2.5원씩 내려감 (20년 차 140원) → 싸게 만드는 기술·전원이 계속 필요
-  moodPriceSlope: 0.2,      // 기대보다 1원 비쌀 때마다 −0.2
-  moodPriceMax: 10,
-  moodPriceFloorPerCap: 5,  // 요금 불만 하한 = −5 × 정책별 상한(자유화 3 · 기본 2 · 규제 1)
-  moodCleanMax: 10,         // 무탄소에 가까울수록 최대 +10
-  moodCleanPreMin: -8,      // (예전 값: 배출 기준이 생기기 전의 하한. 지금은 moodCleanExpMin을 씀)
-  // 국민이 기대하는 탄소 수준(t/MWh): 처음 0.27에서 해마다 0.0085씩 내려가 14년 차부터 0.15. 복합발전(0.37)은 처음부터 이보다 높고,
-  //  테크로 줄여도(끝까지 올리면 약 0.17) 기대가 함께 내려가 따라잡지 못함 → 화력만으로는 임기 내내 민심이 조금씩 깎이고(화력의 한계), 무탄소 전원을 섞어야 플러스가 됨
-  //  원단위가 기대보다 낮으면 (기대 − 원단위) ÷ 기대 × moodCleanMax, 높으면 같은 식으로 음수 (하한 moodCleanExpMin). 법정 기준 초과는 따로 더 크게 깎임
-  cleanExpectStart: 0.27, cleanExpectDrop: 0.0085, cleanExpectMin: 0.15,
-  moodCleanExpMin: -6,
-  // 가스 의존: 가스 발전 비중이 moodGasFree(55%)를 넘으면, 겨울(난방용 가스 부족)과 가스값 급등 때 민심이 깎임. moodGasFull(85%) 이상이면 온전히
-  //  겨울 최대 −8 · 가스값이 평소의 1.2배를 넘으면 넘는 0.1배마다 −1(최대 −6) · 합쳐서 최대 −10 · 첫 1년은 없고 그 뒤 3년에 걸쳐 서서히 커져 4년 차 말부터 온전히
-  //  (봇 실험: 40%부터 깎으면 섞어 지은 노선도 가스만 쓰는 쪽과 똑같이 깎여 구분이 안 됨 → 절반 넘게 가스에 기댈 때부터)
-  moodGasFree: 0.55, moodGasFull: 0.85, moodGasWinter: 8, moodGasSpikeFrom: 1.2, moodGasSpikePer: 10, moodGasSpikeMax: 6, moodGasCap: 10, moodGasGraceYears: 1, moodGasRampYears: 3,
-  moodCleanOverPerStep: 8,  // 기준을 0.08 t/MWh 넘을 때마다 −8 (유예 기간에 따라 최대 −8/−16/−24)
-  moodEconSlope: 6,         // 인구 증가율이 그해 기본 증가율의 2배면 +6, 0이면 −6
-  moodEconMin: -8, moodEconMax: 8,
-  // 전력 수출: 수출량이 그달 수요의 1%일 때마다 민심 +0.5, 최대 +5 (수요의 10%). 남는 전기만 수출되므로 원전·재생에너지를 넉넉히 짓고 연계선을 뚫은 사람만 얻음
-  moodExportPer: 0.5, moodExportMax: 5,
-  moodCrowdPerStep: 2,      // 과밀 단계당 −2
+  moodPriceSlope: 0.2,
+  //  설비 과잉 부담: 조절 설비(복합발전·석탄·원전)가 한 해 최대 수요의 reserveFree배를 넘으면, 넘는 1%p마다 요금에 1원(reserveWonPer ÷ 100)이 얹힘
+  //   → 남아도는 설비의 유지비는 결국 요금으로 냄. 여유 20~35%는 사람이 들어오게 하면서도 부담이 없는 알맞은 범위
+  reserveFree: 1.35,
+  reserveWonPer: 100,
+  // ③ 환경: 발전량당 탄소(t/MWh)가 0이면 20점, "탄소 기준" 이상이면 0점. 기준은 처음 carbonRefStart에서 20년 차 carbonRefEnd까지 해마다 내려감
+  //   복합발전(0.37)은 처음에만 조금 받고, 석탄(0.85)은 테크를 끝까지 올려도(약 0.38) 거의 못 받음 → 화력만으로는 환경 20점을 거의 통째로 잃음 (쉽지만 고점이 낮은 길)
+  carbonRefStart: 0.50, carbonRefEnd: 0.22,
+  // ④ 도시·생활 = 일자리(0~moodJobsMax) + 전력 수출(0~moodExportMax) + 주거 여유(0~moodHousingMax) − 주민 불만(기피 시설 · 원전 불안 · 국토 잠식)
+  moodJobsMax: 6,           // 최근 1년 인구 증가율이 그해 기본 증가율과 같으면 절반(3), 2배면 만점, 0이면 0점
+  moodExportPer: 0.4, moodExportMax: 4,   // 수출량이 그달 수요의 1%일 때마다 +0.4 (10%면 만점). 남는 전기만 수출되므로 원전·재생에너지를 넉넉히 짓고 연계선을 뚫은 사람만 얻음
+  moodHousingMax: 10,       // 전국 평균 인구 밀도(만 명/칸)가 housingComfort 이하면 만점, densityLimit(과밀 기준 2.5)이면 0점. 인구가 늘수록 떨어지므로 새 도시를 세워야 유지됨
+  housingComfort: 1.3,
+  housingGrowthMin: 0.15,   // 도시가 과밀 기준까지 차면 인구 유입이 평소의 15%로 줄어듦 (새 도시를 세워야 다시 늘어남)
+  // ⑤ 미래·신뢰 = 연구(0~moodResearchMax) + 국정 신뢰(기본 moodTrustBase + 정책 노선 + 공약 이행)
+  moodResearchMax: 10, moodResearchMid: 5,   // 연구 수준이 국민의 기대와 같으면 5점, 1단계 앞설 때마다 +moodTechSlope
+  moodTrustBase: 3,
   moodNuisanceMult: 1.5,    // 기피 시설 벌점 배수
   // 원전 밀집 불안: 기수가 늘수록 커짐. 친원전 노선이면 절반, 원자력 테크 8단계(피동 안전 계통)면 다시 절반
   //  (봇 실험: SMR 기당 −1 · 3기까지 무료일 때는 SMR 13기를 지어도 −1.6이라 관리할 것이 없었음 → SMR을 잔뜩 짓는 길은 안전 테크·대형 원전·입지를 챙겨야 하게 함)
@@ -262,19 +259,16 @@ const ECON = {
   moodNukeCap: 15,
   // 국토 사용: 땅 위의 태양광·풍력이 국토(땅+산)의 moodLandFree%를 넘으면, 넘는 1%마다 −moodLandPerPct (재생에너지 중심 노선이면 절반). 바다 위 풍력은 세지 않음
   //   나라를 2,700칸 → 2,300칸으로 줄이면서, 같은 설비 수에서 벌점이 같도록 기준을 넓이 비율(0.85)만큼 옮김 (5% · 1.2 → 5.9% · 1.02)
-  moodLandFree: 5.9, moodLandPerPct: 1.02, moodLandCap: 10,
+  moodLandFree: 5.9, moodLandPerPct: 0.7, moodLandCap: 6,
   offshoreOmMult: 2,        // 바다 위 풍력은 고정 유지비 2배 (관리가 어려움)
   // 연구: "연구 수준"(10단계 눈금)을 국민의 기대(해마다 moodTechPerYear단계씩 오름, 최대 10)와 비교. 1단계 앞서면 +moodTechSlope, 뒤처지면 −
   //  노선을 골랐으면 내 노선 테크 2 : 계통 테크 1 (화력 = 복합발전·석탄 평균, 재생에너지 = 태양광·풍력 평균, 원자력 = 15단계를 10단계 눈금으로)
   //  중립이면 지금 쓰는 설비들의 테크 평균. 어느 쪽이든 그 테크의 설비 용량(건설 중 포함)이 최대 수요의 moodTechFullShare 이상이어야 온전히 셈
   moodTechPerYear: 0.4,
-  moodTechSlope: 1.5,
-  moodTechMin: -10, moodTechMax: 10,
+  moodTechSlope: 1.0,
   moodTechFullShare: 0.2,
   // 정책 공약: 지키면 민심 +moodPledgeKept(임기 끝까지), 기한을 넘기면 −moodPledgeBroken (늦게라도 지키면 벌점만 사라짐)
-  moodPledgeKept: 2, moodPledgeBroken: 3,
-  // 새 도시: 시작 도시 말고 새로 세운 도시 1곳마다 민심 +moodNewCityPer (주거 여유·건설 경기), 최대 +moodNewCityMax
-  moodNewCityPer: 1, moodNewCityMax: 4,
+  moodPledgeKept: 1, moodPledgeBroken: 2,
   // 산지 태양광: 숲을 베어 낸 만큼 탄소 흡수가 줄어, 그 발전량 1MWh마다 이만큼(t)을 배출한 것으로 셈 (복합발전의 절반쯤)
   solarMountainCo2: 0.18,
   pledgeFreePriceRatio: 1.0,   // 시장 자유화 공약: 기한이 되는 해의 평균 체감 요금이 기대 요금의 이 배율 이하
@@ -285,7 +279,7 @@ const ECON = {
   // 재선: electionMonth개월(10년)을 채우는 달의 민심이 electionBar 이상이어야 임기를 이어 감. electionNotice개월 전에 예고
   electionMonth: 120,
   electionNotice: 24,
-  electionBar: 50,
+  electionBar: 45,
   // 전기요금 조정: 국민이 실제로 내는 요금을 도매값(SMP)에서 rate만큼 올리거나 내림.
   //  지원(−)이면 깎아 준 만큼 전력 판매 수입에서 나가고, 할증(+)이면 그만큼 더 들어옴.
   //  민심은 따로 오르내리지 않고 "전기 요금" 요인 하나로만 작용함: 체감 요금이 내려가면 요금 불만이 줄지만, 요금 만족 상한(+moodPriceMax)을 넘겨 주지는 못함
@@ -300,12 +294,12 @@ const ECON = {
   tariffLockMonths: 6,     // 한 번 바꾸면 이 기간 동안 못 바꿈
   tariffFromMonth: 24,     // 3년 차부터 쓸 수 있음 (초반 2년은 플랜트만으로 버텨야 함)
   happyGrowthSlope: 0.01,  // 민심 1점당 증가율 배수 변화
-  happinessGameOver: 0,    // 민심이 0이 되면 탄핵
+  happinessGameOver: 10,   // 민심이 10 이하로 떨어지면 탄핵 (다섯 분야가 모두 바닥이어야 이렇게 됨)
   // 원전 중대 사고: 원전·SMR 1기가 1년 안에 사고를 낼 확률 0.0001% (게임 안에서는 설명하지 않고, 일어나면 사건으로 알림)
   nukeAccidentPerYear: 0.000001,
   nukeAccidentRadius: 2,   // 발전소 둘레 2칸까지 접근 금지 (대형 원전이면 7×7칸 = 지도 그림 nuclear-accident-ground.png의 크기)
-  nukeAccidentHit: 60,     // 그달 민심 −60 (친원전 노선이면 1.5배)
-  nukeAccidentMood: 30,    // 그 뒤 임기 끝까지 민심 −30
+  nukeAccidentHit: 30,     // 그달 민심 −30 (친원전 노선이면 1.5배)
+  nukeAccidentMood: 20,    // 그 뒤 임기 끝까지 민심 −20
   // 안정 공급 회복: 민심 구간별로 줄어듦 (70 미만 +2, 70~89 +1, 90 이상 0). 90대는 싼 전기·호황·목표 보상 같은 성과가 있어야 올라감
   happinessRecovery: 2,
   happinessLowBar: 70,
@@ -355,7 +349,8 @@ const ECON = {
   growthScoreMax: 10,
   tradeShareFull: 0.06,     // 임기 수출 전력량이 국내 소비의 6%면 교역 50점
   carbonRecentWeight: 0.7,  // 탄소 점수: 최근 3년 원단위 70% + 기간 평균 30% (늦게라도 깨끗하게 끝내면 만회 가능)
-  cityNewcomers: 0.15,     // 새 도시를 세우면 수용량(과밀 기준 × 칸 수)의 이 비율만큼 신규 인구가 밖에서 들어옴
+  cityNewcomers: 0.15,     // 새 도시를 세우면 수용량(과밀 기준 × 칸 수)의 이 비율만큼 신규 인구가 밖에서 들어옴 (80칸이면 30만 명)
+  cityNewcomerShare: 0.09, // …또는 전국 인구의 이 비율 가운데 큰 쪽 (나라가 커진 뒤에도 새 도시 하나가 수요를 눈에 띄게 끌어오도록. 인구 500만이면 45만 명)
   cityNewcomerFadeFrom: 4, // 도시가 이 수를 넘은 뒤 세우는 도시부터 신규 유입이 줄어듦 (6번째 도시까지는 그대로)
   cityNewcomerFade: 0.15,  // 넘는 도시 하나당 신규 유입 −15%
   cityNewcomerMin: 0.25,   // 신규 유입 최소 배수
