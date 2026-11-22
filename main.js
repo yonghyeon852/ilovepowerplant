@@ -1616,7 +1616,10 @@ function drawStartPreview() {
     close();
   };
   document.addEventListener('keydown', onKey, true);
-  box.addEventListener('pointerdown', (e) => { e.preventDefault(); close(); });
+  box.addEventListener('pointerdown', (e) => {
+    if (e.target && e.target.closest && e.target.closest('[data-bgm]')) return;   // BGM 버튼은 이 화면에 머문 채로 음악만 켜고 끔
+    e.preventDefault(); close();
+  });
   img.addEventListener('load', () => {
     box.style.setProperty('--title-bg', 'url("' + img.src + '")');   // 그림 주변 여백은 같은 그림을 흐리게 깔아 채움
     box.classList.remove('loading');

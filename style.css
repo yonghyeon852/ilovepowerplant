@@ -159,6 +159,10 @@ details.more p { margin-top: 6px; }
 #next-month small { font-weight: 500; opacity: 0.75; font-size: 0.7rem; margin-left: 4px; }
 #next-month:disabled { box-shadow: none; }
 
+/* 배경 음악 켜기/끄기 버튼 (위쪽 막대 · 시작 화면). 꺼져 있으면 흐리게 */
+.bgm-btn { padding: 9px 12px; font-size: 0.86rem; }
+[data-bgm].off { opacity: 0.6; }
+
 .menu { position: relative; }
 .menu summary { list-style: none; cursor: pointer; padding: 9px 12px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); color: var(--muted); font-size: 0.86rem; }
 .menu summary::-webkit-details-marker { display: none; }
@@ -612,6 +616,11 @@ canvas#forecast-chart, canvas#report-chart { display: block; width: 100%; height
 #title-screen .title-frame { position: relative; display: flex; max-width: 100%; max-height: 100%; box-shadow: 0 0 60px rgba(0, 0, 0, 0.6); }
 #title-screen img { display: block; max-width: 100vw; max-height: 100vh; width: auto; height: auto; user-select: none; -webkit-user-drag: none; }
 #title-screen.loading .title-frame { visibility: hidden; }
+/* 타이틀 화면 오른쪽 위의 BGM 버튼: 그림 위에서도 읽히게 어두운 바탕 + 밝은 테두리 */
+#title-screen .title-bgm { position: absolute; top: max(14px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); z-index: 2; padding: 9px 14px; font-family: 'Courier New', 'D2Coding', monospace; font-weight: 700; font-size: clamp(13px, 1.5vw, 17px); letter-spacing: 0.04em; color: #fff3c4; background: rgba(11, 16, 48, 0.78); border: 2px solid #fff3c4; border-radius: 6px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5); cursor: pointer; }
+#title-screen .title-bgm:hover { background: rgba(26, 36, 92, 0.9); }
+#title-screen .title-bgm.off { opacity: 1; }
+#title-screen.loading .title-bgm { visibility: hidden; }
 #title-screen .title-press { position: absolute; left: 0; right: 0; bottom: 6.2%; text-align: center; font-family: 'Courier New', 'D2Coding', monospace; font-weight: 700; font-size: clamp(14px, min(2.5vw, 4.4vh), 40px); letter-spacing: 0.16em; color: #fff3c4; text-shadow: 3px 3px 0 #0b1030, -2px -2px 0 #0b1030, 2px -2px 0 #0b1030, -2px 2px 0 #0b1030, 0 0 14px rgba(0, 0, 0, 0.9); animation: title-blink 1.1s steps(2, start) infinite; pointer-events: none; }
 @keyframes title-blink { to { visibility: hidden; } }
 
@@ -896,6 +905,8 @@ body.mobile .date-box > :first-child { margin-right: auto; }
 body.mobile #next-month { padding: 8px 14px; }
 body.mobile #next-month small, body.mobile #report-close small { display: none; }
 body.mobile #menu summary { padding: 8px 10px; }
+body.mobile .bgm-btn { padding: 8px 10px; }
+body.mobile .bgm-btn span { display: none; }
 body.mobile #menu .menu-list button { padding: 10px 12px; }
 /* 본문: 지도가 남는 높이를 다 쓰고, 그 아래에 칸 하나 + 탭 줄 */
 body.mobile #tab-map { display: flex; flex-direction: column; gap: 6px; padding: 6px 6px 0; overflow: hidden; }

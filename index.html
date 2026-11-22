@@ -16,7 +16,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="style.css?v=s11221310x">
+  <link rel="stylesheet" href="style.css?v=s11221338d">
 </head>
 <body>
 
@@ -51,6 +51,7 @@
     <div class="date-box">
       <span id="date-value">2030년 1월</span>
       <button id="next-month" class="primary" title="단축키: Space / Enter">이번 달 진행 ▶ <small>Space</small></button>
+      <button id="bgm-top" class="ghost bgm-btn" data-bgm="short" title="배경 음악 끄기">🔊<span> BGM</span></button>
       <details id="menu" class="menu">
         <summary title="메뉴: 요약 복사 · 용어 풀이 · 안내 다시 보기 · 사퇴 · 새 게임">☰ 메뉴</summary>
         <div class="menu-list">
@@ -252,12 +253,14 @@
   </div>
 
   <!-- ===== 시작 화면 ===== -->
-  <!-- 타이틀 화면: 접속하자마자 먼저 보이고, 아무 키나 누르거나 클릭하면 아래 시작 화면으로 넘어감. 그림을 못 불러오면 나타나지 않음 -->
+  <!-- 타이틀 화면: 접속하자마자 먼저 보이고, 아무 키나 누르거나 클릭하면 아래 시작 화면으로 넘어감. 그림을 못 불러오면 나타나지 않음.
+       오른쪽 위 BGM 버튼은 이 화면에 머문 채로 음악만 켜고 끔 (bgm.js) -->
   <div id="title-screen" class="loading">
     <div class="title-frame">
       <img id="title-img" alt="I love power plant" data-src="assets/title-screen/title-screen-v1.jpg?v=20261121151848">
       <div class="title-press">아무 키나 눌러 시작</div>
     </div>
+    <button id="bgm-title" class="title-bgm" data-bgm="long" title="배경 음악 켜기">🔇 BGM 꺼짐</button>
   </div>
 
   <div id="start" class="overlay">
@@ -281,6 +284,7 @@
       <div class="start-links">
         <button id="continue-game" class="ghost hidden">이어하기</button>
         <button id="show-rankings" class="ghost">🏆 랭킹</button>
+        <button id="bgm-start" class="ghost" data-bgm="long" title="배경 음악 끄기">🔊 BGM 켜짐</button>
       </div>
       <details class="more how">
         <summary>게임 규칙 한눈에 보기</summary>
@@ -365,20 +369,21 @@
     </div>
   </div>
 
-  <script src="map.js?v=s11221310x"></script>
-  <script src="atlas.js?v=s11221310x"></script>
-  <script src="facilities.js?v=s11221310x"></script>
-  <script src="plants.js?v=s11221310x"></script>
-  <script src="tech.js?v=s11221310x"></script>
-  <script src="events.js?v=s11221310x"></script>
-  <script src="events2.js?v=s11221310x"></script>
-  <script src="events4.js?v=s11221310x"></script>
-  <script src="tutorial.js?v=s11221310x"></script>
-  <script src="sim.js?v=s11221310x"></script>
-  <script src="ui.js?v=s11221310x"></script>
-  <script src="rankings_seed.js?v=s11221310x"></script>
-  <script src="rankdetail.js?v=s11221310x"></script>
-  <script src="main.js?v=s11221310x"></script>
-  <script src="mobile.js?v=s11221310x"></script>
+  <script src="map.js?v=s11221338d"></script>
+  <script src="atlas.js?v=s11221338d"></script>
+  <script src="facilities.js?v=s11221338d"></script>
+  <script src="plants.js?v=s11221338d"></script>
+  <script src="tech.js?v=s11221338d"></script>
+  <script src="events.js?v=s11221338d"></script>
+  <script src="events2.js?v=s11221338d"></script>
+  <script src="events4.js?v=s11221338d"></script>
+  <script src="tutorial.js?v=s11221338d"></script>
+  <script src="sim.js?v=s11221338d"></script>
+  <script src="ui.js?v=s11221338d"></script>
+  <script src="rankings_seed.js?v=s11221338d"></script>
+  <script src="rankdetail.js?v=s11221338d"></script>
+  <script src="main.js?v=s11221338d"></script>
+  <script src="mobile.js?v=s11221338d"></script>
+  <script src="bgm.js?v=s11221338d"></script>
 </body>
 </html>
