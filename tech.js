@@ -228,7 +228,8 @@ function attemptTech(state, tree) {
 }
 
 // 달이 지날 때 연구 진행. 끝난 연구의 결과를 적용하고 알림 문구 목록을 돌려줌
-function progressResearch(state) {
+//  results(배열)를 넘기면 끝난 연구마다 { ok, tree, name, lvl }을 담아 줌 (지도 아래 알림과 효과음용)
+function progressResearch(state, results) {
   const notices = [];
   if (!state.techBusy) return notices;
   if (!state.techPity) state.techPity = {};
@@ -242,10 +243,12 @@ function progressResearch(state) {
       state.tech[tree] = job.lvl + 1;
       state.techPity[tree] = 0;
       notices.push('✓ 연구 성공: ' + job.name);
+      if (results) results.push({ ok: true, tree, name: job.name, lvl: job.lvl + 1 });
       if (typeof milestone === 'function') milestone('🧪 연구 성공: ' + job.name);
     } else {
       state.techPity[tree] = (state.techPity[tree] || 0) + TECH_PITY;
       notices.push('✕ 연구 실패: ' + job.name + ' (다음 시도 +' + fmt(TECH_PITY * 100) + '%)');
+      if (results) results.push({ ok: false, tree, name: job.name, lvl: job.lvl + 1 });
     }
     state.techLog = [{ year: state.year, month: state.month, tree, name: job.name, cost: job.cost, prob: job.prob, success: job.success }]
       .concat(state.techLog || []).slice(0, 12);

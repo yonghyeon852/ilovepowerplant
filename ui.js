@@ -1517,6 +1517,41 @@ function showMessage(text, ms) {
   messageTimer = setTimeout(() => el.classList.remove('show'), ms || 1800);
 }
 
+// 연구 결과 알림: 달이 넘어갈 때 지도 아래 가운데에 잠깐 뜸. 성공은 초록, 실패는 빨강. results = [{ ok, tree, name, lvl }]
+function placeResearchToast() {
+  const box = document.getElementById('rd-toast'), map = document.getElementById('map-wrap');
+  if (!box || !map) return;
+  const r = map.getBoundingClientRect();
+  const mobile = document.body.classList.contains('mobile');
+  const modalOpen = [...document.querySelectorAll('.overlay')].some((o) => !o.classList.contains('hidden'));
+  if (r.width < 40 || r.height < 40 || (mobile && modalOpen)) {
+    // 지도가 안 보이거나, 휴대폰에서 사건 창이 화면을 덮었을 때: 창의 글을 가리지 않게 화면 맨 아래 가운데
+    box.style.left = '8px'; box.style.width = 'calc(100vw - 16px)'; box.style.bottom = '14px';
+  } else {
+    const pad = mobile ? 6 : 12;
+    box.style.left = Math.round(r.left + pad) + 'px';
+    box.style.width = Math.round(r.width - pad * 2) + 'px';   // 지도 폭 그대로 깔고, 알림은 그 안에서 가운데 정렬
+    box.style.bottom = Math.round(window.innerHeight - r.bottom + (mobile ? 54 : 50)) + 'px';   // 지도 아래쪽 칩들 바로 위
+  }
+}
+window.addEventListener('resize', () => { const box = document.getElementById('rd-toast'); if (box && box.children.length) placeResearchToast(); });
+function showResearchToast(results) {
+  const box = document.getElementById('rd-toast');
+  if (!box) return;
+  placeResearchToast();
+  for (const r of results) {
+    const el = document.createElement('div');
+    el.className = 'rd-toast-item ' + (r.ok ? 'ok' : 'fail');
+    const tree = TECH[r.tree] ? TECH[r.tree].name + ' ' + r.lvl + '단계 · ' : '';
+    el.innerHTML = '<b>' + (r.ok ? '🔬 연구 성공' : '✕ 연구 실패') + '</b><span>' + escapeHtml(tree + r.name) + '</span>' +
+      (r.ok ? '' : '<small>다음 시도 +' + fmt(TECH_PITY * 100) + '%</small>');
+    box.appendChild(el);
+    while (box.children.length > 3) box.removeChild(box.firstChild);
+    setTimeout(() => el.classList.add('show'), 20);
+    setTimeout(() => { el.classList.remove('show'); setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 300); }, 4500);
+  }
+}
+
 // 기온이 수요에 주는 영향 (여름 더위 · 겨울 추위). 평년과 같거나 봄가을이면 빈 글
 function tempDemandText(w, lead) {
   const dm = (w && w.demandMult) || 1;

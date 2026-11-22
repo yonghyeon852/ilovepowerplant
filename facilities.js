@@ -1,11 +1,11 @@
 // Raster miniatures use a common light direction and two image pixels per map pixel.
 const worldArt = Object.create(null);
-const artNames = 'gasTurbine ccgt coal nuclear smr solar wind ess interconnect village downtown grove meadow'.split(' ');
+const artNames = 'gasTurbine ccgt coal nuclear smr solar wind ess interconnect village downtown grove meadow mountain-relief'.split(' ');
 const worldArtReady = Promise.all(artNames.map(name => new Promise(resolve => {
   const img = new Image();
-  img.onload = () => { worldArt[name] = img; resolve(); };
+  img.onload = () => { worldArt[name === 'mountain-relief' ? 'mountainRelief' : name] = img; resolve(); };
   img.onerror = () => resolve();
-  img.src = 'assets/world/' + name + (name === 'meadow' ? '.jpg' : '.png');
+  img.src = 'assets/world/' + name + (name === 'meadow' || name === 'mountain-relief' ? '.jpg' : '.png');   // 큰 바탕 그림 두 장은 jpg (산 그림 원본 png는 3.3MB라 0.5MB jpg로 다시 저장)
 })));
 
 function drawFacility(ctx,type,x,y,w,h) {

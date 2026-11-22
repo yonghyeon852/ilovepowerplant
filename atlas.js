@@ -78,10 +78,10 @@ function continueRiverHeads(grid,ids) {
 
 function makeRelief(grid) {
   const n=reliefResolution, rows=grid.length, cols=grid[0].length;
-  const layer=document.createElement('canvas'), mask=document.createElement('canvas');
-  layer.width=mask.width=cols*n; layer.height=mask.height=rows*n;
-  const pen=layer.getContext('2d'), maskPen=mask.getContext('2d');
-  const pixels=pen.createImageData(layer.width,layer.height), haze=maskPen.createImageData(layer.width,layer.height);
+  const layer=document.createElement('canvas'), mask=document.createElement('canvas'), mountainMask=document.createElement('canvas');
+  layer.width=mask.width=mountainMask.width=cols*n; layer.height=mask.height=mountainMask.height=rows*n;
+  const pen=layer.getContext('2d'), maskPen=mask.getContext('2d'), mountainPen=mountainMask.getContext('2d');
+  const pixels=pen.createImageData(layer.width,layer.height), haze=maskPen.createImageData(layer.width,layer.height), peaks=mountainPen.createImageData(layer.width,layer.height);
   const types=[LAND,MOUNTAIN,RIVER,SEA,FOREIGN,OFFSHORE];
   const ids=grid.map(row=>Uint8Array.from(row,t=>types.indexOf(t)));
   const colors=types.map(t=>[1,3,5].map(i=>parseInt(TERRAIN_COLORS[t].slice(i,i+2),16)));
@@ -112,10 +112,13 @@ function makeRelief(grid) {
         for(let k=0;k<3;k++) pixels.data[pos+k]=colors[0][k]+light;
         const slope=clamp((weights[1]-.12)/.78,0,1);
         if(slope>0) {
-          const ridge=Math.sin(px*.36+py*.32+1.7*Math.sin(py*.17)+.8*Math.cos(px*.23));
-          const height=1-Math.abs(ridge);
-          const light=16*height-19*ridge+(height>.83?6:0);
-          for(let k=0;k<3;k++) pixels.data[pos+k]+=(colors[1][k]+light-pixels.data[pos+k])*slope;
+          let fallbackLight=0;
+          if(!worldArt.mountainRelief) {
+            const ridge=Math.sin(px*.36+py*.32+1.7*Math.sin(py*.17)+.8*Math.cos(px*.23));
+            fallbackLight=16*(1-Math.abs(ridge))-19*ridge;
+          }
+          for(let k=0;k<3;k++) pixels.data[pos+k]+=(colors[1][k]+fallbackLight-pixels.data[pos+k])*slope;
+          peaks.data[pos+3]=255*slope*slope;
         }
         const shore=clamp((water-.18)*2.4,0,.68);
         alpha=.56+.32*Math.max(slope,shore);
@@ -126,8 +129,23 @@ function makeRelief(grid) {
       pixels.data[pos+3]=255*alpha;
     }
   }
-  pen.putImageData(pixels,0,0);maskPen.putImageData(haze,0,0);
-  return {layer,warmLand:mask,border:countryBorder(grid),ids};
+  pen.putImageData(pixels,0,0);maskPen.putImageData(haze,0,0);mountainPen.putImageData(peaks,0,0);
+  let mountains=null;
+  if(worldArt.mountainRelief) {
+    // 산 그림 한 장을 지도 전체에 한 번만 깔고(뒤집거나 이어 붙이지 않음) 산 칸만 남김.
+    //  예전에는 그림을 좌우·상하로 뒤집어 가며 18칸마다 이어 붙여서, 이음매에 걸친 산이 데칼코마니처럼 뒤집혀 보였음.
+    //  한 장으로 깔면 산마다 그림의 서로 다른 부분이 보이고 빛 방향도 모두 같음.
+    //  이 겹만 지형 겹보다 촘촘하게(mountainDetail배) 만들어 그림 원본의 결을 살림 (원본 1254px ≈ 지도 68칸 × 18px)
+    const img=worldArt.mountainRelief, mountainDetail=1.5;
+    mountains=document.createElement('canvas');mountains.width=Math.round(layer.width*mountainDetail);mountains.height=Math.round(layer.height*mountainDetail);
+    const mountainSurface=mountains.getContext('2d');
+    const fit=Math.max(mountains.width/img.naturalWidth,mountains.height/img.naturalHeight);   // 지도를 다 덮게 맞추고 남는 쪽은 가운데 기준으로 잘라 냄
+    const iw=img.naturalWidth*fit, ih=img.naturalHeight*fit;
+    mountainSurface.imageSmoothingQuality='high';
+    mountainSurface.drawImage(img,(mountains.width-iw)/2,(mountains.height-ih)/2,iw,ih);
+    mountainSurface.globalCompositeOperation='destination-in';mountainSurface.drawImage(mountainMask,0,0,mountains.width,mountains.height);
+  }
+  return {layer,mountains,warmLand:mask,border:countryBorder(grid),ids};
 }
 
 // Trace the playable footprint once. Rounded joins and screen-space dashes make a
@@ -168,7 +186,7 @@ function countryBorder(grid) {
 }
 
 function drawTerrain(ctx,grid,tint=0,extendEdges=false,placing=false) {
-  if(!reliefCache.has(grid)) reliefCache.set(grid,makeRelief(grid));
+  if(!reliefCache.has(grid) || (worldArt.mountainRelief && !reliefCache.get(grid).mountains)) reliefCache.set(grid,makeRelief(grid));
   const relief=reliefCache.get(grid), w=grid[0].length*TILE, h=grid.length*TILE;
   if(extendEdges) {
     const m=ctx.getTransform();
@@ -176,6 +194,7 @@ function drawTerrain(ctx,grid,tint=0,extendEdges=false,placing=false) {
     drawSurround(ctx,grid,relief);
   } else drawMeadow(ctx,0,0,w,h);
   ctx.drawImage(relief.layer,0,0,w,h);
+  if(relief.mountains) ctx.drawImage(relief.mountains,0,0,w,h);
   ctx.save();
   const haze=tint<=0 ? .11*(1+tint) : .11+.24*tint;
   if(haze>0) {

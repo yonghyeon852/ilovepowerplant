@@ -337,7 +337,9 @@ function advanceMonth() {
   }
 
   // 연구 진행(3개월 뒤 결과), 이번 달 연구소 확장 제한 초기화
-  for (const n of progressResearch(state)) notices.push(n);
+  const rdResults = [];
+  const rdNotices = progressResearch(state, rdResults);
+  for (const n of rdNotices) notices.push(n);
   for (const n of attrition(state)) notices.push(n);
   state.hiredThisMonth = false; state.labExpandedThisMonth = false;
   for (const n of expireEffects(state)) { notices.push(n); milestone(n); }
@@ -372,7 +374,17 @@ function advanceMonth() {
   }
   startMonth(true);
   state.notices = notices;
-  if (notices.length) showMessage(notices.join(' · '), 3500);
+  // 연구 결과는 지도 아래 가운데 알림과 효과음으로 따로 알림 (달이 넘어갈 때 나는 소리는 이것뿐). 나머지 소식은 위쪽 한 줄 알림
+  const otherNotices = notices.filter((n) => !rdNotices.includes(n));
+  if (otherNotices.length) showMessage(otherNotices.join(' · '), 3500);
+  if (rdResults.length) {
+    if (typeof showResearchToast === 'function') showResearchToast(rdResults);
+    if (typeof sfx === 'function') {
+      const anyOk = rdResults.some((r) => r.ok), anyFail = rdResults.some((r) => !r.ok);
+      if (anyOk) sfx('rdok');
+      if (anyFail) sfx('rdfail', anyOk ? 0.6 : 0);   // 성공과 실패가 같은 달에 겹치면 성공 소리 뒤에
+    }
+  }
   checkEnd();
   saveGame();
   renderAll();
@@ -767,6 +779,7 @@ function tryBuild(type, col, row) {
   const n = nuisanceOf(state, b);
   if (n > 0) msg += ' ⚠ ' + (overlapsCity(type, col, row) ? '도시 안이라' : '도시 근처라') + ' 민심 −' + fmt(n * ECON.moodNuisanceMult, 1) + ' (철거할 때까지)';
   showMessage(msg, 3000);
+  if (typeof sfx === 'function') sfx('place');   // 놓는 소리 "툭"
   saveGame();
   renderAll();
 }
@@ -881,6 +894,7 @@ function confirmCityDraft() {
   const newcomers = nc.n;
   newPop += newcomers;
   state.cities.push(makeCity(d.tiles.slice(), newPop, name));
+  if (typeof sfx === 'function') sfx('place');
   milestone('🏙 새 도시 ' + name + ' 조성');
   state.cityDraft = null;
   document.getElementById('city-name').value = '';

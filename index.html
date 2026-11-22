@@ -16,7 +16,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="style.css?v=s11221338d">
+  <link rel="stylesheet" href="style.css?v=s11221401h">
 </head>
 <body>
 
@@ -55,6 +55,7 @@
       <details id="menu" class="menu">
         <summary title="메뉴: 요약 복사 · 용어 풀이 · 안내 다시 보기 · 사퇴 · 새 게임">☰ 메뉴</summary>
         <div class="menu-list">
+          <button id="sfx-toggle" data-sfx title="효과음(버튼 · 건설 · 연구 결과) 끄기">🔔 효과음 켜짐</button>
           <button id="copy-summary" title="현재 게임 플레이 상황을 짧은 글로 클립보드에 복사합니다">📋 상황 요약 복사</button>
           <button id="glossary-open" title="SMP, 용량 요금 같은 전력 용어를 쉬운 말로 풀어 봅니다">📖 용어 풀이</button>
           <button id="tutorial-help" title="비서의 안내를 처음부터 다시 봅니다">❓ 안내 다시 보기</button>
@@ -252,6 +253,9 @@
     </div>
   </div>
 
+  <!-- 연구 결과 알림: 달이 넘어갈 때 지도 아래 가운데에 잠깐 뜸 (위치는 ui.js showResearchToast가 지도 칸에 맞춤) -->
+  <div id="rd-toast" aria-live="polite"></div>
+
   <!-- ===== 시작 화면 ===== -->
   <!-- 타이틀 화면: 접속하자마자 먼저 보이고, 아무 키나 누르거나 클릭하면 아래 시작 화면으로 넘어감. 그림을 못 불러오면 나타나지 않음.
        오른쪽 위 BGM 버튼은 이 화면에 머문 채로 음악만 켜고 끔 (bgm.js) -->
@@ -369,21 +373,22 @@
     </div>
   </div>
 
-  <script src="map.js?v=s11221338d"></script>
-  <script src="atlas.js?v=s11221338d"></script>
-  <script src="facilities.js?v=s11221338d"></script>
-  <script src="plants.js?v=s11221338d"></script>
-  <script src="tech.js?v=s11221338d"></script>
-  <script src="events.js?v=s11221338d"></script>
-  <script src="events2.js?v=s11221338d"></script>
-  <script src="events4.js?v=s11221338d"></script>
-  <script src="tutorial.js?v=s11221338d"></script>
-  <script src="sim.js?v=s11221338d"></script>
-  <script src="ui.js?v=s11221338d"></script>
-  <script src="rankings_seed.js?v=s11221338d"></script>
-  <script src="rankdetail.js?v=s11221338d"></script>
-  <script src="main.js?v=s11221338d"></script>
-  <script src="mobile.js?v=s11221338d"></script>
-  <script src="bgm.js?v=s11221338d"></script>
+  <script src="map.js?v=s11221401h"></script>
+  <script src="atlas.js?v=s11221401h"></script>
+  <script src="facilities.js?v=s11221401h"></script>
+  <script src="plants.js?v=s11221401h"></script>
+  <script src="tech.js?v=s11221401h"></script>
+  <script src="events.js?v=s11221401h"></script>
+  <script src="events2.js?v=s11221401h"></script>
+  <script src="events4.js?v=s11221401h"></script>
+  <script src="tutorial.js?v=s11221401h"></script>
+  <script src="sim.js?v=s11221401h"></script>
+  <script src="ui.js?v=s11221401h"></script>
+  <script src="rankings_seed.js?v=s11221401h"></script>
+  <script src="rankdetail.js?v=s11221401h"></script>
+  <script src="main.js?v=s11221401h"></script>
+  <script src="mobile.js?v=s11221401h"></script>
+  <script src="bgm.js?v=s11221401h"></script>
+  <script src="sfx.js?v=s11221401h"></script>
 </body>
 </html>

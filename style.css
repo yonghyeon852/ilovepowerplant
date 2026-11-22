@@ -283,6 +283,15 @@ canvas#minimap { display: block; height: 112px; width: auto; border: 1px solid r
 
 #message { position: absolute; z-index: 6; left: 50%; top: 56px; transform: translateX(-50%); padding: 8px 16px; background: rgba(13, 16, 22, 0.92); border: 1px solid var(--line-2); border-radius: 10px; font-size: 0.86rem; opacity: 0; transition: opacity 0.2s; pointer-events: none; white-space: nowrap; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; box-shadow: var(--shadow); }
 #message.show { opacity: 1; }
+/* 연구 결과 알림: 지도 아래 가운데에 잠깐 뜸 (달이 넘어갈 때). 사건 창이 같이 떠도 보이게 창(.overlay)보다 위.
+   left · bottom · max-width는 ui.js showResearchToast가 지도 칸 위치에 맞춰 넣음 (아래 값은 못 구했을 때의 기본) */
+#rd-toast { position: fixed; z-index: 700; left: 12px; width: calc(100vw - 24px); bottom: 60px; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.rd-toast-item { display: flex; align-items: baseline; gap: 10px; max-width: 100%; padding: 10px 16px; background: rgba(13, 16, 22, 0.96); border: 1px solid var(--line-2); border-left: 4px solid var(--good); border-radius: 10px; font-size: 0.92rem; white-space: nowrap; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); opacity: 0; transform: translateY(10px); transition: opacity 0.22s, transform 0.22s; }
+.rd-toast-item.show { opacity: 1; transform: none; }
+.rd-toast-item b { color: var(--good); }
+.rd-toast-item.fail { border-left-color: var(--bad); }
+.rd-toast-item.fail b { color: var(--bad); }
+.rd-toast-item small { color: var(--muted); }
 #tooltip { position: absolute; z-index: 5; padding: 6px 10px; background: rgba(13, 16, 22, 0.94); border: 1px solid var(--line-2); border-radius: var(--radius-sm); font-size: 0.78rem; line-height: 1.4; pointer-events: none; white-space: nowrap; display: none; }
 
 /* ---------- 6. 오른쪽 정보 칸 ---------- */
@@ -952,6 +961,7 @@ body.mobile .hud-bl { bottom: 6px; left: 6px; max-width: calc(100% - 136px); }
 body.mobile .hud .chip { padding: 4px 8px; font-size: 0.72rem; border-radius: 8px; }
 body.mobile .hud .chip-strong .stat-lines > span { font-size: 0.86rem; }
 body.mobile #message { top: 8px; max-width: calc(100% - 16px); white-space: normal; text-align: center; }
+body.mobile .rd-toast-item { white-space: normal; flex-wrap: wrap; justify-content: center; text-align: center; gap: 4px 8px; padding: 8px 12px; font-size: 0.86rem; }
 /* 카드와 버튼: 손가락으로 누르기 좋게, 목록은 위아래로 밀 수 있게 */
 body.mobile .plant-card { touch-action: pan-y; cursor: pointer; padding: 8px 9px; }
 body.mobile #left-col #palette-cards { gap: 8px; }
