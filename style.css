@@ -766,6 +766,18 @@ canvas#forecast-chart, canvas#report-chart { display: block; width: 100%; height
 .pol-fxline { font-size: 0.74rem; color: var(--muted); padding: 0 0 4px 0; line-height: 1.4; }
 .pol-pledge { display: block; padding: 5px 9px; margin: 0 0 6px 0; background: var(--panel-2); border-left: 3px solid var(--warn); border-radius: 8px; font-size: 0.8rem; color: var(--text); cursor: help; }
 .pol-pledge.broken { border-left-color: var(--bad); }
+/* 공약 진행 막대 (정책 칸): 무엇 · 막대 · 지금 / 목표 · ✓ */
+.pm-list { display: flex; flex-direction: column; gap: 5px; margin: 6px 0 3px; }
+.pm { display: grid; grid-template-columns: minmax(0, 36%) minmax(36px, 1fr) auto 12px; align-items: center; column-gap: 8px; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+.pm .l { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm .bar { height: 7px; border-radius: 4px; background: rgba(255, 255, 255, 0.09); overflow: hidden; }
+.pm .bar i { display: block; height: 100%; border-radius: 4px; background: var(--warn); }
+.pm.ok .bar i { background: var(--good); }
+.pm .v { white-space: nowrap; text-align: right; }
+.pm .v b { font-size: 0.86rem; font-weight: 700; color: var(--text); }
+.pm.ok .v b { color: var(--good); }
+.pm .v small { color: var(--muted); font-size: 0.74rem; }
+.pm .c { color: var(--good); font-weight: 700; text-align: right; }
 .pol-pledge .t { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-weight: 600; }
 .pol-pledge .t span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pol-pledge .p { color: var(--muted); font-size: 0.76rem; margin-top: 1px; font-variant-numeric: tabular-nums; }

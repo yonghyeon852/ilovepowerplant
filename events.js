@@ -618,24 +618,43 @@ function noBlackoutRunOf(s, q) {
 }
 function normPeakOf(s) { return s.cities.reduce((a, c) => a + c.pop, 0) * perCapitaNow(s); }   // 계절·날씨·사건의 영향을 뺀 최대 수요 (인구 × 1인당 수요). 예전에는 계절 배율만 나눠서, 봄가을에 잰 값이 여름·겨울보다 7%쯤 작게 나왔음
 function crowdedCitiesOf(s) { return s.cities.filter((c) => cityDensity(c) > ECON.densityLimit).length; }
+// 공약 진행 막대 한 줄 (정책 칸에서 "지금 값 / 목표 값"을 막대로 보여 줌). 막대가 찰수록 목표에 가까움
+//  now · goal = 숫자, o.nowText · o.goalText = 화면에 적을 글, o.lower = 낮을수록 좋은 값, o.from = 막대의 출발점(예: 수요 1배), o.ok = 달성 여부를 따로 정할 때
+function meterOf(label, now, goal, o) {
+  o = o || {};
+  const ok = o.ok !== undefined ? !!o.ok : (o.lower ? now <= goal : now >= goal);
+  let ratio;
+  if (o.lower) ratio = now <= 0 ? 1 : goal / now;   // 목표보다 높을수록 막대가 줄어듦
+  else { const from = o.from || 0; ratio = (now - from) / Math.max(1e-9, goal - from); }
+  return { label, now: o.nowText, goal: o.goalText, ratio: ok ? 1 : Math.max(0, Math.min(0.97, ratio)), ok };
+}
 const PLEDGES = [
   {
     id: 'pledge_energy_nuclear', policy: 'energy', months: 120, title: '공약: 원전 시대', brief: '10년 안에 원자력 비중 30% + 원자력 테크 5단계',
     short: '10년 안에 원전·SMR로 한 달 전기의 30% 이상을 만들고, 원자력 테크 5단계까지 개발',
     check: (s, r) => nukeShareOf(r) >= 0.3 && (s.tech.nuclear || 0) >= 5,
     progress: (s) => '원자력 ' + (s.lastReport ? fmt(nukeShareOf(s.lastReport) * 100) : '0') + '% / 30% · 테크 ' + (s.tech.nuclear || 0) + ' / 5단계',
+    meters: (s) => { const sh = s.lastReport ? nukeShareOf(s.lastReport) : 0, t = s.tech.nuclear || 0; return [meterOf('원자력 비중', sh, 0.3, { nowText: fmt(sh * 100) + '%', goalText: '30%' }), meterOf('원자력 테크', t, 5, { nowText: t + '단계', goalText: '5단계' })]; },
   },
   {
     id: 'pledge_energy_thermal', policy: 'energy', months: 120, title: '공약: 깨끗한 화력', brief: '10년 안에 화력 비중 50% + 복합발전·석탄 테크 합쳐 8단계',
     short: '10년 안에 복합발전·석탄으로 한 달 전기의 50% 이상을 만들고, 복합발전·석탄 테크를 합쳐 8단계 개발',
     check: (s, r) => thermalShareOf(r) >= 0.5 && thermalTiersOf(s) >= 8,
     progress: (s) => '화력 ' + (s.lastReport ? fmt(thermalShareOf(s.lastReport) * 100) : '0') + '% / 50% · 테크 ' + thermalTiersOf(s) + ' / 8단계',
+    meters: (s) => { const sh = s.lastReport ? thermalShareOf(s.lastReport) : 0, t = thermalTiersOf(s); return [meterOf('화력 비중', sh, 0.5, { nowText: fmt(sh * 100) + '%', goalText: '50%' }), meterOf('복합발전+석탄 테크', t, 8, { nowText: t + '단계', goalText: '8단계' })]; },
   },
   {
     id: 'pledge_energy_renew', policy: 'energy', months: 120, title: '공약: 재생에너지 전환', brief: '10년 안에 태양광·풍력 비중 40% (각각 10% 이상) + 테크 합쳐 6단계',
     short: '10년 안에 태양광·풍력으로 한 달 전기의 40% 이상을 만들되 둘 다 10% 이상이 되게 섞고, 태양광·풍력 테크를 합쳐 6단계 개발',
     check: (s, r) => renShareOf(r) >= 0.4 && renMinShareOf(r) >= 0.1 && renTiersOf(s) >= 6,
     progress: (s) => { const r = s.lastReport, g = r && r.energy.gen, t = g ? (g.nuclear + g.coal + g.ccgt + g.gt + g.solar + g.wind) || 1 : 1; return '태양광 ' + (g ? fmt(g.solar / t * 100) : '0') + '% + 풍력 ' + (g ? fmt(g.wind / t * 100) : '0') + '% / 40% (각 10%↑) · 테크 ' + renTiersOf(s) + ' / 6단계'; },
+    meters: (s) => {
+      const r = s.lastReport, g = r && r.energy.gen, tot = g ? (g.nuclear + g.coal + g.ccgt + g.gt + g.solar + g.wind) || 1 : 1;
+      const so = g ? g.solar / tot : 0, wi = g ? g.wind / tot : 0, t = renTiersOf(s);
+      return [meterOf('태양광+풍력 비중', so + wi, 0.4, { nowText: fmt((so + wi) * 100) + '%', goalText: '40%' }),
+              meterOf('적은 쪽 (' + (so <= wi ? '태양광' : '풍력') + ')', Math.min(so, wi), 0.1, { nowText: fmt(Math.min(so, wi) * 100) + '%', goalText: '10%' }),
+              meterOf('태양광+풍력 테크', t, 6, { nowText: t + '단계', goalText: '6단계' })];
+    },
   },
   {
     // 자유화의 약속은 "결국 전기값이 내려간다". 기한이 되는 해에 한 번 평가 (선거처럼). 요금 지원으로 맞춰도 인정
@@ -644,12 +663,14 @@ const PLEDGES = [
     fail: (s, r, q) => { const f = feltYearOf(s); return monthIdxOf(s) >= q.deadline && !(f && f.felt <= f.ref * ECON.pledgeFreePriceRatio); },
     check: (s, r, q) => { const f = feltYearOf(s); return monthIdxOf(s) >= q.deadline && !!f && f.felt <= f.ref * ECON.pledgeFreePriceRatio; },
     progress: (s) => { const f = feltYearOf(s); return f ? '최근 1년 체감 요금 ' + fmt(f.felt) + '원 / 기대 ' + fmt(f.ref * ECON.pledgeFreePriceRatio) + '원 이하' + (f.felt <= f.ref * ECON.pledgeFreePriceRatio ? ' (지금 기준 통과)' : ' (지금 기준 미달)') : '1년 기록이 쌓이면 표시'; },
+    meters: (s) => { const f = feltYearOf(s); if (!f) return [{ label: '체감 요금 (최근 1년)', now: '—', goal: '1년 기록이 쌓이면 표시', ratio: 0, ok: false }]; const goal = f.ref * ECON.pledgeFreePriceRatio; return [meterOf('체감 요금 (최근 1년)', f.felt, goal, { lower: true, nowText: fmt(f.felt) + '원', goalText: fmt(goal) + '원 이하' })]; },
   },
   {
     id: 'pledge_market_regulated', policy: 'market', months: 96, title: '공약: 끊기지 않는 전기', brief: '8년 안에 정전 없는 24개월 연속',
     short: '8년 안에 정전 없는 24개월 연속 달성 (약속한 달부터 셈)',
     check: (s, r, q) => noBlackoutRunOf(s, q) >= 24,
     progress: (s, q) => '무정전 ' + noBlackoutRunOf(s, q) + ' / 24개월 연속',
+    meters: (s, q) => { const n = noBlackoutRunOf(s, q); return [meterOf('정전 없는 연속 기간', n, 24, { nowText: n + '개월', goalText: '24개월' })]; },
   },
   {
     id: 'pledge_industry_growth', policy: 'industry', months: 96, title: '공약: 산업 강국', brief: '8년 안에 최대 전력 수요 2.5배',
@@ -657,6 +678,7 @@ const PLEDGES = [
     base: (s) => ({ peak: normPeakOf(s) }),
     check: (s, r, q) => normPeakOf(s) >= q.base.peak * 2.5,
     progress: (s, q) => '최대 수요 ' + fmt(normPeakOf(s) / q.base.peak, 2) + '배 / 2.5배',
+    meters: (s, q) => { const v = normPeakOf(s) / q.base.peak; return [meterOf('최대 수요 (약속한 때의 몇 배)', v, 2.5, { from: 1, nowText: fmt(v, 2) + '배', goalText: '2.5배' })]; },
   },
   {
     id: 'pledge_industry_balance', policy: 'industry', months: 72, title: '공약: 고른 국토', brief: '6년 안에 새 도시 2곳 + 과밀 도시 없음',
@@ -664,12 +686,14 @@ const PLEDGES = [
     base: (s) => ({ n: s.cities.length }),
     check: (s, r, q) => s.cities.length >= q.base.n + 2 && crowdedCitiesOf(s) === 0,
     progress: (s, q) => '새 도시 ' + Math.min(2, s.cities.length - q.base.n) + ' / 2곳 · 과밀 도시 ' + crowdedCitiesOf(s) + '곳',
+    meters: (s, q) => { const n = Math.max(0, Math.min(2, s.cities.length - q.base.n)), c = crowdedCitiesOf(s); return [meterOf('새 도시', n, 2, { nowText: n + '곳', goalText: '2곳' }), meterOf('과밀 도시', c, 0, { lower: true, nowText: c + '곳', goalText: '0곳' })]; },
   },
   {
     id: 'pledge_rd_public', policy: 'rd', months: 72, title: '공약: 과학 기술 입국', brief: '6년 안에 연구소 규모 300',
     short: '6년 안에 연구소 규모 300 달성 (8단계 연구가 열리는 수준)',
     check: (s) => rdLevel(s) >= 300,
     progress: (s) => '연구소 규모 ' + fmt(rdLevel(s)) + ' / 300',
+    meters: (s) => { const lv = rdLevel(s); return [meterOf('연구소 규모', lv, 300, { nowText: fmt(lv), goalText: '300' })]; },
   },
   {
     id: 'pledge_rd_private', policy: 'rd', months: 72, title: '공약: 기술 상용화', brief: '6년 안에 연구 12건 성공',
@@ -677,6 +701,7 @@ const PLEDGES = [
     base: (s) => ({ tiers: totalTiers(s) }),
     check: (s, r, q) => totalTiers(s) - q.base.tiers >= 12,
     progress: (s, q) => '연구 성공 ' + (totalTiers(s) - q.base.tiers) + ' / 12건',
+    meters: (s, q) => { const n = totalTiers(s) - q.base.tiers; return [meterOf('연구 성공', n, 12, { nowText: n + '건', goalText: '12건' })]; },
   },
 ];
 for (const d of PLEDGES) QUESTS.push(Object.assign({ icon: '📜', followup: true, pledge: true, reward: {}, penalty: {}, cond: () => true, desc: d.short + '.' }, d));
@@ -752,6 +777,12 @@ for (const T of TERM2_THEMES) TERM2_LEVELS.forEach((L, lv) => {
     base: T.base,
     check: (s, r, q) => T.ok(T.value(s, q), t, s),
     progress: (s, q) => (T.nowText ? T.nowText(s) : T.fmtV(T.value(s, q))) + ' / ' + T.fmtT(t) + (T.key === 'price' || T.key === 'gas' ? ' 이하' : ''),
+    meters: (s, q) => {
+      if (T.key === 'tech') return term2TechKeys(s).concat(['grid']).map((k) => { const need = term2TechNeed(k, t), lv = s.tech[k] || 0; return meterOf(TECH[k].name.replace(' · 배터리', '') + ' 테크', lv, need, { nowText: lv + '단계', goalText: need + '단계' }); });
+      const v = T.value(s, q), lower = T.key === 'price' || T.key === 'gas';
+      const label = { renew: '재생 비중 (1년 평균)', export: '수출 비중 (1년 평균)', growth: '최대 수요 (약속한 때의 몇 배)', price: '요금 ÷ 기대 요금 (1년 평균)', gas: '가스 발전 비중 (1년 평균)' }[T.key] || T.title;
+      return [meterOf(label, v, t, { lower, from: T.key === 'growth' ? 1 : 0, ok: T.ok(v, t, s), nowText: T.fmtV(v), goalText: T.fmtT(t) + (lower ? ' 이하' : '') })];
+    },
   });
 });
 // 재선 공약을 약속함 (기한 = 임기 216번째 달)

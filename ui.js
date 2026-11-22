@@ -1646,6 +1646,15 @@ setInterval(() => {
 // 지도 아래 요약: 정책 패널 · 테크/R&D 패널
 // ------------------------------------------------------------
 const POLICY_SHORT = { energy: '에너지', market: '전력시장', industry: '산업', rd: 'R&D' };
+// 공약 진행 막대: 줄마다 "무엇 · 막대 · 지금 / 목표 · ✓". 막대가 찰수록 목표에 가깝고, 채우면 초록으로 바뀜
+function pledgeMetersHtml(def, state, q) {
+  let list = null;
+  try { list = def.meters ? def.meters(state, q) : null; } catch (e) { list = null; }
+  if (!list || !list.length) return '<div class="p">' + def.progress(state, q) + '</div>';
+  return '<div class="pm-list">' + list.map((m) =>
+    '<div class="pm' + (m.ok ? ' ok' : '') + '"><span class="l">' + m.label + '</span><span class="bar"><i style="width:' + Math.round(m.ratio * 100) + '%"></i></span>' +
+    '<span class="v"><b>' + m.now + '</b><small> / ' + m.goal + '</small></span><span class="c">' + (m.ok ? '✓' : '') + '</span></div>').join('') + '</div>';
+}
 function renderPolicyPanel(state) {
   const el = document.getElementById('policy-info');
   if (!el || !state) return;
@@ -1669,7 +1678,7 @@ function renderPolicyPanel(state) {
       const durP = left > 24 ? Math.floor(left / 12) + '년' + (left % 12 ? ' ' + (left % 12) + '개월' : '') : left + '개월';
       const st = pq.status === 'done' ? ['good', '지킴 · 민심 +' + ECON.moodPledgeKept] : pq.status === 'failed' ? ['bad', '기한 지남 · 민심 −' + ECON.moodPledgeBroken] : pq.status === 'late' ? ['muted', '늦게 지킴 · 벌점 없음'] : [left <= 12 ? 'bad' : 'warn', durP + ' 남음'];
       html += '<div class="pol-pledge' + (pq.status === 'failed' ? ' broken' : '') + '" title="' + (d.short + '.').replace(/"/g, '&quot;') + '"><div class="t"><span>📜 ' + d.title.replace('공약: ', '') + '</span><small class="' + st[0] + '">' + st[1] + '</small></div>' +
-        (pq.status === 'active' || pq.status === 'failed' ? '<div class="p">' + d.progress(state, pq) + '</div>' : '') + '</div>';
+        (pq.status === 'active' || pq.status === 'failed' ? pledgeMetersHtml(d, state, pq) : '') + '</div>';
     }
   }
   {
@@ -1680,7 +1689,7 @@ function renderPolicyPanel(state) {
       const st = tq.status === 'done' ? ['good', '지킴 · 민심 +' + d.kept] : tq.status === 'failed' ? ['bad', '못 지킴 · 민심 −' + d.broken] : tq.status === 'late' ? ['muted', '늦게 지킴 · 벌점 없음'] : [left <= 24 ? 'bad' : 'warn', durP + ' 남음'];
       html = '<div class="pol-row"><span class="n">🗳 재선 공약</span><span class="v">' + d.title.replace('재선 공약: ', '') + '</span></div>' +
         '<div class="pol-pledge' + (tq.status === 'failed' ? ' broken' : '') + '" title="' + (d.short + '. 지키면 임기 끝까지 민심 +' + d.kept + ', 못 지키면 그달 민심 −' + d.penalty.happy + ', 그 뒤로도 −' + d.broken + '.').replace(/"/g, '&quot;') + '"><div class="t"><span>' + d.brief + '</span><small class="' + st[0] + '">' + st[1] + '</small></div>' +
-        (tq.status === 'active' || tq.status === 'failed' ? '<div class="p">' + d.progress(state, tq) + '</div>' : '') + '</div>' + html;
+        (tq.status === 'active' || tq.status === 'failed' ? pledgeMetersHtml(d, state, tq) : '') + '</div>' + html;
     }
   }
   const fx = effectsNow(state);
