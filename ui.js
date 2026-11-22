@@ -1335,7 +1335,11 @@ function drawChart(canvas, opts) {
   // 화면에 보이는 크기(CSS px) 기준으로 그려서 글씨가 작아지지 않게 하고, 고해상도 화면에서도 선명하게
   const cssW = canvas.clientWidth;
   if (cssW > 0) {
-    const aspect = opts.aspect || (parseInt(canvas.getAttribute('height'), 10) / parseInt(canvas.getAttribute('width'), 10)) || 0.4;
+    // 가로세로 비율: 지정이 없으면 HTML에 적힌 처음 크기에서 한 번만 구해 기억해 둠.
+    //  (아래에서 canvas.width/height를 바꾸면 그 속성도 같이 바뀜. 매번 속성에서 다시 구하면, 스크롤 막대 자리만큼 높이를 더하는 보정이
+    //   그릴 때마다 비율에 쌓여서 결산 그래프가 끝없이 길어졌음)
+    if (!opts.aspect && !canvas.dataset.aspect) canvas.dataset.aspect = (parseInt(canvas.getAttribute('height'), 10) / parseInt(canvas.getAttribute('width'), 10)) || 0.4;
+    const aspect = opts.aspect || parseFloat(canvas.dataset.aspect) || 0.4;
     const dpr = window.devicePixelRatio || 1;
     // 높이는 "스크롤 막대가 없을 때의 폭"으로 정함. 막대가 생겨 폭이 줄 때 높이까지 따라 줄면
     //  내용이 다시 다 들어가 막대가 사라지고 → 폭이 늘어 그래프가 커지고 → 다시 넘쳐 막대가 생기는 되풀이로 칸이 들썩임

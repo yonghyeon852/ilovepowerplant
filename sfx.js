@@ -10,7 +10,10 @@
 // ------------------------------------------------------------
 (function () {
   const KEY = 'ilpp-sfx';
-  const MASTER = 0.6;        // 효과음 전체 음량
+  const MASTER = 1.0;        // 효과음 전체 음량 (소리마다의 크기는 아래 SOUNDS의 gain)
+  //  크기 기준: BGM은 평균 0.07(컴퓨터) ~ 0.12(아이폰), 최대 0.3 ~ 0.5 정도로 남.
+  //  처음에는 효과음을 0.05 안팎으로 만들어 BGM에 묻혀 거의 안 들렸음 → 연구 소리는 BGM 평균의 서너 배, 버튼 틱은 두 배쯤으로 키움.
+  //  "툭"은 낮은 음만으로는 노트북 · 휴대폰 스피커에서 안 들려서 한 옥타브 위 음과 부딪히는 잡음을 겹침
   const MIN_GAP_MS = 45;     // 같은 소리가 이보다 촘촘히 겹치면 건너뜀
 
   let on = true;
@@ -29,15 +32,18 @@
     return ctx;
   }
 
-  // 한 음: f0에서 f1로 미끄러지며(없으면 고정) dur초 동안 작아짐
+  // 한 음: f0에서 f1로 미끄러지며(없으면 고정) dur초 동안 남. 앞쪽 hold 비율만큼은 제 크기를 유지하고 그 뒤에 작아짐
+  //  (처음부터 바로 작아지게 하면 음 길이의 4분의 1만 지나도 10분의 1 크기가 되어, 최대 크기에 비해 훨씬 작게 들림)
   function tone(o) {
     const osc = ctx.createOscillator(), g = ctx.createGain();
     const s = o.t, e = o.t + o.dur;
+    const holdUntil = s + Math.max(0.005, o.dur * (o.hold === undefined ? 0.55 : o.hold));
     osc.type = o.type || 'square';
     osc.frequency.setValueAtTime(o.f0, s);
     if (o.f1) osc.frequency.exponentialRampToValueAtTime(o.f1, e);
     g.gain.setValueAtTime(0.0001, s);
     g.gain.exponentialRampToValueAtTime(o.gain, s + 0.004);
+    g.gain.setValueAtTime(o.gain, holdUntil);
     g.gain.exponentialRampToValueAtTime(0.0001, e);
     osc.connect(g); g.connect(master);
     osc.start(s); osc.stop(e + 0.02);
@@ -60,22 +66,37 @@
 
   const SOUNDS = {
     // 버튼: 아주 짧고 작은 틱
-    click(t) { tone({ type: 'triangle', f0: 1150, f1: 820, t, dur: 0.035, gain: 0.09 }); },
-    // 건물 놓기: 낮은 음이 뚝 떨어지는 "툭" + 살짝 부딪히는 잡음
+    click(t) { tone({ type: 'triangle', f0: 1250, f1: 900, t, dur: 0.05, gain: 0.32, hold: 0.4 }); },
+    // 건물 놓기: 낮은 음이 뚝 떨어지는 "툭" + 한 옥타브 위 음(작은 스피커용) + 부딪히는 잡음
     place(t) {
-      tone({ type: 'sine', f0: 165, f1: 52, t, dur: 0.14, gain: 0.7 });
-      noise({ t, dur: 0.045, gain: 0.22, freq: 700 });
+      tone({ type: 'sine', f0: 210, f1: 70, t, dur: 0.16, gain: 0.5, hold: 0.35 });
+      tone({ type: 'triangle', f0: 420, f1: 150, t, dur: 0.1, gain: 0.26, hold: 0.3 });
+      noise({ t, dur: 0.055, gain: 0.3, freq: 1500 });
     },
     // 연구 성공: 도-미-솔-도 (오락실 느낌)
     rdok(t) {
-      [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone({ type: 'square', f0: f, t: t + i * 0.075, dur: i === 3 ? 0.26 : 0.09, gain: 0.11 }));
-      tone({ type: 'triangle', f0: 1046.5, t: t + 0.225, dur: 0.3, gain: 0.14 });
+      [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone({ type: 'square', f0: f, t: t + i * 0.075, dur: i === 3 ? 0.28 : 0.09, gain: 0.26 }));
+      tone({ type: 'triangle', f0: 1046.5, t: t + 0.225, dur: 0.32, gain: 0.3 });
     },
     // 연구 실패: 낮게 내려가는 두 음
     rdfail(t) {
-      tone({ type: 'square', f0: 311.13, t, dur: 0.15, gain: 0.1 });
-      tone({ type: 'square', f0: 233.08, f1: 185, t: t + 0.16, dur: 0.3, gain: 0.1 });
+      tone({ type: 'square', f0: 311.13, t, dur: 0.16, gain: 0.26 });
+      tone({ type: 'square', f0: 233.08, f1: 185, t: t + 0.17, dur: 0.32, gain: 0.26 });
     },
+  };
+
+  // 점검용: 소리를 화면 밖에서 그려 보고 크기를 잼 (귀로 듣지 못할 때 숫자로 확인) → { peak 최대, rms 평균, ms 길이 }
+  window.sfxMeasure = async function (name) {
+    const OC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!OC || !SOUNDS[name]) return null;
+    const keep = [ctx, master, noiseBuf];
+    const off = new OC(1, 44100, 44100);
+    ctx = off; master = off.createGain(); master.gain.value = MASTER; master.connect(off.destination); noiseBuf = null;
+    try { SOUNDS[name](0.01); } finally { ctx = keep[0]; master = keep[1]; noiseBuf = keep[2]; }
+    const d = (await off.startRendering()).getChannelData(0);
+    let peak = 0, sum = 0, n = 0;
+    for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; if (a > 0.002) { sum += d[i] * d[i]; n++; } }
+    return { peak: +peak.toFixed(3), rms: n ? +Math.sqrt(sum / n).toFixed(3) : 0, ms: Math.round(n / 44.1) };
   };
 
   function fire(name, delay) {
