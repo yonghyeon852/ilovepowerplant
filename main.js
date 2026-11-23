@@ -1492,7 +1492,7 @@ document.getElementById('new-game').addEventListener('click', () => {
     document.getElementById('continue-game').classList.add('hidden');
   }
 });
-document.querySelectorAll('#start .mode').forEach((btn) => {
+document.querySelectorAll('#start .mode[data-mode]').forEach((btn) => {   // "인트로" 칸은 게임을 시작하지 않음 (intro.js)
   btn.addEventListener('click', () => { document.getElementById('start').classList.add('hidden'); showTab('map'); newGame(btn.dataset.mode); });
 });
 document.getElementById('continue-game').addEventListener('click', () => {

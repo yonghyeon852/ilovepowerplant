@@ -7,6 +7,7 @@
 //  - 켜짐/꺼짐은 브라우저에 기억 (기본은 켜짐). data-bgm 속성이 붙은 버튼은 모두 켜기/끄기 버튼
 //      data-bgm="long"  → "🔊 BGM 켜짐" / "🔇 BGM 꺼짐" (타이틀 화면 · 시작 화면)
 //      data-bgm="short" → "🔊 BGM" / "🔇 BGM" (게임 화면 위쪽 막대. 휴대폰에서는 그림만)
+//  - 인트로 영상이 나오는 동안은 잠시 멈춤 (bgmHold · intro.js)
 //    버튼은 "지금 소리가 나는지"를 보여 줌: 켜 두었어도 아직 브라우저에 막혀 있으면 꺼짐으로 보이고, 누르면 켜짐
 //  - 음량: data-bgm-vol 속성이 붙은 막대(0~100)는 모두 BGM 음량 막대. 브라우저에 기억 (기본 60).
 //      아이폰은 웹페이지가 음량을 바꿀 수 없어(애플 제한) 막대를 숨김 → 기기의 음량 버튼으로 조절
@@ -24,6 +25,7 @@
 
   let on = true;         // 사용자가 고른 설정 (켜짐/꺼짐)
   let blocked = true;    // 아직 소리를 못 내는 상태 (첫 입력 전). 재생이 한 번 시작되면 false
+  let held = false;      // 인트로 영상이 나오는 동안 잠시 멈춘 상태 (설정은 그대로. intro.js가 bgmHold로 걸고 품)
   try { on = localStorage.getItem(KEY) !== 'off'; } catch (e) { /* 저장소를 못 쓰면 기본값(켜짐) */ }
 
   let audio = null;
@@ -39,7 +41,7 @@
   }
   // byUser: 사용자의 입력(클릭·키) 안에서 부른 것 → 재생이 허용되므로 버튼을 바로 "켜짐"으로 바꿈
   function tryPlay(byUser) {
-    if (!on || document.hidden) return;
+    if (!on || held || document.hidden) return;
     if (byUser && blocked) { blocked = false; sync(); }
     const p = player().play();
     if (p && p.then) {
@@ -81,6 +83,12 @@
   });
   window.bgmSet = set;
   window.bgmIsOn = () => on && !blocked;
+  window.bgmWanted = () => on;   // 사용자가 고른 설정 (아직 소리가 안 나는 상태여도 켜 두었으면 true)
+  // 잠시 멈춤 / 다시 재생: 켜짐·꺼짐 설정과 버튼 표시는 건드리지 않음
+  window.bgmHold = (v) => {
+    held = !!v;
+    if (held) { if (audio) audio.pause(); } else tryPlay(false);
+  };
 
   const onBgmButton = (e) => (e.target && e.target.closest ? e.target.closest('[data-bgm]') : null);
 
